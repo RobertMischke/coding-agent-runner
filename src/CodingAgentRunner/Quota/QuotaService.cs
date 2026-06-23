@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using CodingAgentRunner.Events;
+using CodingAgentRunner.Model;
 
 namespace CodingAgentRunner.Quota;
 
@@ -35,6 +37,8 @@ public sealed class QuotaService
     private readonly ConcurrentDictionary<string, Lazy<Task<QuotaSnapshot?>>> _inflight = new(StringComparer.OrdinalIgnoreCase);
     private readonly QuotaCacheOptions _options;
     private readonly IQuotaCacheStore? _store;
+    // Per-CLI usage caps (percent). A run is gated when the cached usage reaches it.
+    private readonly ConcurrentDictionary<string, double> _caps = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Create the service over a set of probes, with optional escalation options and persistence.</summary>
     public QuotaService(
@@ -142,6 +146,89 @@ public sealed class QuotaService
             return snap;
         }
         finally { _inflight.TryRemove(cliType, out _); }
+    }
+
+    // ── Cap-enforcement ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Configure a usage cap for one CLI: once its cached usage reaches
+    /// <paramref name="stopAtPercent"/>, <see cref="Gate"/> blocks. Set once; works for
+    /// any CLI, with or without a registered probe.
+    /// </summary>
+    public void Cap(string cliType, double stopAtPercent)
+        => _caps[CliTypes.Normalize(cliType)] = stopAtPercent;
+
+    /// <summary>
+    /// Cheap, non-blocking cap check — reads the cache, never probes. Returns
+    /// <see cref="QuotaGate.Open"/> when there is no cap, no cached data (fail-open), or
+    /// usage is under the cap; otherwise a blocked verdict with a reason and the earliest
+    /// window reset as <c>RetryAfter</c>. Call it in a pickup tick before starting a run.
+    /// </summary>
+    public QuotaGate Gate(string cliType)
+    {
+        var cli = CliTypes.Normalize(cliType);
+        if (!_caps.TryGetValue(cli, out var cap)) return QuotaGate.Open;
+
+        var snap = GetCachedFor(cli);
+        if (snap is null) return QuotaGate.Open;          // no data → don't block
+        var used = snap.MaxUsedPct;
+        if (used < cap) return QuotaGate.Open;
+
+        DateTime? reset = snap.Windows
+            .Where(w => w.ResetAt.HasValue)
+            .Select(w => w.ResetAt)
+            .OrderBy(x => x)
+            .FirstOrDefault();
+        return new QuotaGate(false, $"{cli} at {used:F0}% used ≥ cap {cap:F0}%", reset);
+    }
+
+    /// <summary>True when <paramref name="cliType"/> is currently gated by its cap.</summary>
+    public bool IsAtCap(string cliType) => !Gate(cliType).Allowed;
+
+    // ── Event harvest (free cache updates) ──────────────────────────────
+
+    /// <summary>
+    /// Feed a run event into the cache. A <see cref="CliRunEvent.RateLimitObserved"/> (e.g.
+    /// from a live Claude run) refreshes the window reset time and marks overage <b>for
+    /// free</b> — no probe spawn — and stamps the snapshot fresh so the next
+    /// <see cref="IsStale"/> check is satisfied for the TTL window. Conservative: it never
+    /// <em>lowers</em> a usage figure a probe already established (the event carries no
+    /// precise percent). Other event types are ignored. Returns true when it harvested.
+    /// Wire it via <c>driver.OnRunEvent += (_, e) =&gt; quota.Observe(driver.CliType, e)</c>.
+    /// </summary>
+    public bool Observe(string cliType, CliRunEvent evt)
+    {
+        if (evt is not CliRunEvent.RateLimitObserved rl) return false;
+        var cli = CliTypes.Normalize(cliType);
+        if (string.IsNullOrWhiteSpace(cli)) return false;
+
+        var prior = GetCachedFor(cli);
+        DateTime? reset = rl.ResetsAt > 0
+            ? DateTimeOffset.FromUnixTimeSeconds(rl.ResetsAt).UtcDateTime
+            : prior?.Windows.FirstOrDefault()?.ResetAt;
+
+        // No precise percent in the event: overage = at/over the base limit (100%);
+        // otherwise preserve whatever usage we already knew.
+        double? usedPct = rl.IsUsingOverage
+            ? 100d
+            : prior?.MaxUsedPct is > 0 ? prior!.MaxUsedPct : null;
+
+        _cache[cli] = new QuotaSnapshot
+        {
+            CliType = cli,
+            FetchedAt = DateTime.UtcNow,
+            Plan = prior?.Plan,
+            Windows = [new QuotaWindow
+            {
+                Label = rl.Window ?? prior?.Windows.FirstOrDefault()?.Label ?? "rate-limit",
+                UsedPct = usedPct,
+                ResetAt = reset,
+            }],
+            Source = "event",
+            RawSample = $"status={rl.Status}; overage={rl.OverageStatus}; usingOverage={rl.IsUsingOverage}",
+        };
+        PersistCache();
+        return true;
     }
 
     private void PersistCache()
