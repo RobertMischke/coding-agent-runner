@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CodingAgentRunner</RootNamespace>
+    <AssemblyName>CodingAgentRunner</AssemblyName>
+
+    <IsPackable>true</IsPackable>
+    <PackageId>CodingAgentRunner</PackageId>
+    <Description>Run coding-agent CLIs — Claude Code, Codex, Copilot, Gemini — from .NET: hardened spawning, streamed events, lifecycle &amp; quota tracking.</Description>
+    <PackageTags>dotnet;cli;ai-agents;coding-agent;claude-code;codex;github-copilot;gemini;process;agent-runner</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

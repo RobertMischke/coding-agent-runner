@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CodingAgentRunner — run coding-agent CLIs from .NET, reliably</title>
+<meta name="description" content="A .NET library to run coding-agent CLIs (Claude Code, Codex, Copilot, Gemini) reliably — hardened spawning, streamed events, lifecycle and quota tracking." />
+<style>
+  :root{
+    --fg:#10151c;--muted:#5b6573;--line:#e6e9ee;--accent:#2f6df6;--accent2:#7c3aed;
+    --bg:#fbfcfe;--card:#fff;--code:#0f1115;--codefg:#e6e9ef;--ok:#067647;--warn:#b54708;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}
+  .wrap{max-width:980px;margin:0 auto;padding:0 22px;}
+  code{background:#eef1f5;padding:1px 6px;border-radius:5px;font:13px/1.5 ui-monospace,Consolas,monospace;}
+  pre{background:var(--code);color:var(--codefg);padding:16px 18px;border-radius:12px;overflow:auto;font:13px/1.6 ui-monospace,Consolas,monospace;}
+  pre .c{color:#7f8a9b;} pre .k{color:#79b8ff;} pre .s{color:#9ecbff;}
+  /* hero */
+  header.hero{background:radial-gradient(1100px 380px at 50% -120px,#eef2ff 0,transparent 70%);border-bottom:1px solid var(--line);padding:64px 0 52px;text-align:center;}
+  .badge{display:inline-block;font-size:12.5px;font-weight:600;color:var(--accent);background:#eef3ff;border:1px solid #dbe6ff;padding:4px 12px;border-radius:999px;margin-bottom:18px;}
+  h1{font-size:42px;line-height:1.1;letter-spacing:-1px;margin:0 0 14px;}
+  h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .tag{font-size:19px;color:var(--muted);max-width:680px;margin:0 auto 26px;}
+  .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
+  .btn{display:inline-block;padding:11px 20px;border-radius:10px;font-weight:600;font-size:15px;}
+  .btn.primary{background:var(--accent);color:#fff;} .btn.primary:hover{background:#1f5ae0;text-decoration:none;}
+  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--fg);} .btn.ghost:hover{border-color:#c8cfdb;text-decoration:none;}
+  /* sections */
+  section{padding:48px 0;border-bottom:1px solid var(--line);}
+  h2{font-size:25px;letter-spacing:-.4px;margin:0 0 8px;}
+  .lead{color:var(--muted);max-width:720px;margin:0 0 22px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
+  .card h3{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:8px;}
+  .card p{margin:0;color:var(--muted);font-size:14.5px;}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--accent);}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center;}
+  @media(max-width:760px){.two{grid-template-columns:1fr;} h1{font-size:34px;}}
+  ul.feat{list-style:none;padding:0;margin:0;} ul.feat li{padding:7px 0;border-bottom:1px solid var(--line);font-size:15px;}
+  ul.feat li b{font-weight:600;}
+  .pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;}
+  .pill.done{background:#e7f6ed;color:var(--ok);} .pill.wip{background:#fff3e0;color:var(--warn);}
+  footer{padding:34px 0 60px;color:var(--muted);font-size:14px;text-align:center;}
+  .note{background:#fffaf2;border:1px solid #f3e2c7;border-radius:12px;padding:12px 16px;color:#7a5a1e;font-size:14.5px;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge">.NET library · Apache-2.0 · early / WIP</span>
+    <h1>Coding<span class="grad">AgentRunner</span></h1>
+    <p class="tag">Run coding-agent CLIs — Claude Code, Codex, Copilot, Gemini — from .NET: <b>hardened spawning, streamed events, lifecycle &amp; quota tracking.</b></p>
+    <div class="btns">
+      <a class="btn primary" href="https://github.com/RobertMischke/coding-agent-runner">View on GitHub</a>
+      <a class="btn ghost" href="https://github.com/RobertMischke/coding-agent-runner/tree/main/docs">Read the docs</a>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap two">
+    <div>
+      <h2>The boring part that's secretly hard</h2>
+      <p class="lead">Spawning a coding-agent CLI from another process and reading its output <em>looks</em> trivial — until you do it on Windows, unattended, at scale. A `.cmd` shim silently truncates your prompt. The agent commits to git when it shouldn't. Concurrent runs trample each other's session. A "done" marker fires because the agent <em>read</em> one in a file. CodingAgentRunner is the layer that has already paid for those lessons.</p>
+    </div>
+    <div>
+      <pre><span class="c">// run an agent, consume a structured event stream</span>
+<span class="k">var</span> runner = <span class="k">new</span> CodingAgentRunner(options, logger);
+<span class="k">await foreach</span> (<span class="k">var</span> evt <span class="k">in</span> runner.RunAsync(<span class="k">new</span> AgentRunOptions
+{
+    Cli = AgentCli.ClaudeCode,
+    Prompt = <span class="s">"refactor the parser…"</span>,
+    WorkingDirectory = repo,
+    CleanContext = <span class="k">true</span>,
+}, ct))
+{
+    <span class="c">// AssistantText | ToolCall | ToolResult | RateLimit…</span>
+}</pre>
+      <p class="lead" style="margin-top:10px;font-size:13px;">API sketch — the surface is still settling during extraction.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>What it hardens</h2>
+    <p class="lead">Each of these was a real, time-consuming incident in a production orchestrator. Every fix ships with a test that pins why it exists.</p>
+    <div class="cards">
+      <div class="card"><h3><span class="dot"></span> Prompt delivery</h3><p>Resolves the Windows `.cmd` shim to the real `.exe`, so a multi-line prompt isn't truncated at the first newline by <code>cmd.exe</code>.</p></div>
+      <div class="card"><h3><span class="dot"></span> Platform-owns-git</h3><p>Keeps the agent from running <code>git commit</code>/<code>push</code> — the host owns version control — closing a git-bash bypass and a crash trigger.</p></div>
+      <div class="card"><h3><span class="dot"></span> Clean-context</h3><p>Each run gets an isolated CLI home, so concurrent runs and your own session never collide.</p></div>
+      <div class="card"><h3><span class="dot"></span> Honest completion</h3><p>A stream-aware sentinel scanner tells the agent's own <code>[[TASK_DONE]]</code> apart from one it merely read in a file.</p></div>
+      <div class="card"><h3><span class="dot"></span> Lifecycle &amp; reaping</h3><p>Stop a run and reap the whole process tree — no orphaned grandchildren holding file handles.</p></div>
+      <div class="card"><h3><span class="dot"></span> Quota, cached</h3><p>Probe the remaining rate-limit window per CLI, cached with an escalation policy that polls more often as you near the limit.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap two">
+    <div>
+      <h2>Features</h2>
+      <ul class="feat">
+        <li><b>Terminal-sentinel detection</b><span class="pill done">landed</span></li>
+        <li><b>Hardened process spawning</b><span class="pill wip">migrating</span></li>
+        <li><b>stream-json → event stream</b><span class="pill wip">migrating</span></li>
+        <li><b>Lifecycle: stop · reap · watchdog</b><span class="pill wip">migrating</span></li>
+        <li><b>Platform-owns-git guard</b><span class="pill wip">migrating</span></li>
+        <li><b>Quota probe + escalation cache</b><span class="pill wip">migrating</span></li>
+      </ul>
+    </div>
+    <div>
+      <h2>Supported agents</h2>
+      <p class="lead">Claude Code · OpenAI Codex · GitHub Copilot CLI · Gemini CLI — and extensible to others.</p>
+      <h2 style="margin-top:22px;">Status</h2>
+      <div class="note">Early / work in progress. Extracted and generalized from a production multi-agent orchestrator. The public API is still settling — pin a version and watch releases. NuGet package coming.</div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><b>CodingAgentRunner</b> — <a href="https://github.com/RobertMischke/coding-agent-runner">GitHub</a> · <a href="https://github.com/RobertMischke/coding-agent-runner/blob/main/LICENSE">Apache-2.0</a> · © 2026 Robert Mischke</p>
+  </div>
+</footer>
+
+</body>
+</html>

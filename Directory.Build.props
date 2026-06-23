@@ -1,0 +1,22 @@
+<Project>
+
+  <!-- Shared settings + package metadata for every project in the repo. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <Authors>Robert Mischke</Authors>
+    <Product>CodingAgentRunner</Product>
+    <Copyright>Copyright (c) 2026 Robert Mischke</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/RobertMischke/coding-agent-runner</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/RobertMischke/coding-agent-runner</PackageProjectUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+
+    <!-- Projects opt in to packaging explicitly (the library does). -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>
