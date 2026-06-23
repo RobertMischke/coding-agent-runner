@@ -81,12 +81,6 @@ internal sealed class ClaudeDriver : CliDriverBase
         foreach (var flag in CliPermissionFlags.For(CliType, request.PermissionMode))
             psi.ArgumentList.Add(flag);
 
-        if (!string.IsNullOrWhiteSpace(request.SystemPromptFile) && File.Exists(request.SystemPromptFile))
-        {
-            psi.ArgumentList.Add("--append-system-prompt-file");
-            psi.ArgumentList.Add(request.SystemPromptFile!);
-        }
-
         // The prompt is the LAST positional argument.
         if (!string.IsNullOrEmpty(request.Prompt))
             psi.ArgumentList.Add(request.Prompt);

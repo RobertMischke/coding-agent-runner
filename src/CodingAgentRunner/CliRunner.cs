@@ -43,19 +43,46 @@ public sealed class CliRunner
         };
     }
 
+    // ── Typed accessors (sugar over Get) — for code that statically knows the CLI ──
+
+    /// <summary>The Claude Code driver. Sugar for <c>Get(CliTypes.Claude)</c>.</summary>
+    public ICliDriver Claude => Get(CliTypes.Claude);
+    /// <summary>The OpenAI Codex driver. Sugar for <c>Get(CliTypes.Codex)</c>.</summary>
+    public ICliDriver Codex => Get(CliTypes.Codex);
+    /// <summary>The Google Gemini driver. Sugar for <c>Get(CliTypes.Gemini)</c>.</summary>
+    public ICliDriver Gemini => Get(CliTypes.Gemini);
+    /// <summary>The GitHub Copilot driver. Sugar for <c>Get(CliTypes.Copilot)</c>.</summary>
+    public ICliDriver Copilot => Get(CliTypes.Copilot);
+
     /// <summary>The drivers, one per supported CLI.</summary>
     public IReadOnlyCollection<ICliDriver> Drivers => _drivers.Values;
 
     /// <summary>The CLI types this runner can resolve.</summary>
     public IReadOnlyCollection<string> SupportedCliTypes => _drivers.Keys;
 
-    /// <summary>Resolve the driver for <paramref name="cliType"/> (normalized). Throws when unknown.</summary>
-    public ICliDriver Get(string cliType)
+    // ── String resolution — for config-driven / dynamic selection ──
+
+    /// <summary>
+    /// Resolve the driver for <paramref name="cliType"/> (case-insensitive, exact
+    /// match against the registered drivers). Throws <see cref="ArgumentException"/>
+    /// when the type is unknown — it does NOT silently fall back to a default, so a
+    /// bad config value surfaces instead of selecting the wrong CLI. The same object
+    /// the typed accessors return.
+    /// </summary>
+    public ICliDriver Get(string? cliType)
         => TryGet(cliType, out var driver)
             ? driver
-            : throw new ArgumentException($"No driver for CLI type '{cliType}'.", nameof(cliType));
+            : throw new ArgumentException($"No driver for CLI type '{cliType}'. Known: {string.Join(", ", _drivers.Keys)}.", nameof(cliType));
 
-    /// <summary>Try to resolve the driver for <paramref name="cliType"/> (normalized).</summary>
-    public bool TryGet(string cliType, out ICliDriver driver)
-        => _drivers.TryGetValue(Model.CliTypes.Normalize(cliType), out driver!);
+    /// <summary>
+    /// Try to resolve the driver for <paramref name="cliType"/> (case-insensitive,
+    /// exact match). Returns false for an unknown / empty type — no fallback.
+    /// </summary>
+    public bool TryGet(string? cliType, out ICliDriver driver)
+    {
+        if (!string.IsNullOrWhiteSpace(cliType) && _drivers.TryGetValue(cliType.Trim(), out driver!))
+            return true;
+        driver = null!;
+        return false;
+    }
 }

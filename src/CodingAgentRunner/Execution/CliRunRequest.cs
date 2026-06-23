@@ -30,11 +30,13 @@ public sealed record CliRunRequest
     /// <summary>Permission posture (one of <see cref="Model.CliPermissionModes"/>); null normalizes to YOLO.</summary>
     public string? PermissionMode { get; init; }
 
-    /// <summary>Context isolation (one of <see cref="Model.CliContextModes"/>); null normalizes to clean.</summary>
-    public string? ContextMode { get; init; }
-
-    /// <summary>Optional file appended to the system prompt (Claude only); ignored by CLIs without the flag.</summary>
-    public string? SystemPromptFile { get; init; }
+    /// <summary>
+    /// Context isolation (one of <see cref="Model.CliContextModes"/>). <b>Defaults to
+    /// <c>clean</c></b> — an isolated per-run config home, so a run sees only the
+    /// prompt + the versioned repo files. Set to <c>shared</c> to use the operator's
+    /// global CLI state. CLIs that cannot isolate (Copilot/Gemini) run shared regardless.
+    /// </summary>
+    public string ContextMode { get; init; } = CodingAgentRunner.Model.CliContextModes.Clean;
 
     /// <summary>Extra environment variables for this run, applied after the standard hardening.</summary>
     public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
