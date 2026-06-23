@@ -159,6 +159,9 @@ public static class AgentGitCommandGuard
 
     private static void TryMarkExecutable(string path)
     {
+        // Unix mode bits only mean something on POSIX hosts; the chmod is a no-op
+        // concept on Windows (and File.SetUnixFileMode is unsupported there).
+        if (OperatingSystem.IsWindows()) return;
         try
         {
             File.SetUnixFileMode(path,
