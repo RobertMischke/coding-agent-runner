@@ -15,8 +15,7 @@ public class CliDriverArgvTests
         Model = model,
         ThinkingLevel = thinking,
         PermissionMode = perm,
-        SessionName = session,
-        ResumeSession = resume,
+        ResumeSessionId = resume ? session : null,   // the id alone IS the resume signal
     };
 
     [Fact]

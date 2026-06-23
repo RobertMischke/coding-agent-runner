@@ -21,11 +21,12 @@ public sealed record CliRunRequest
     /// <summary>Requested thinking / reasoning level; resolved against the model's capability table.</summary>
     public string? ThinkingLevel { get; init; }
 
-    /// <summary>CLI-native session id to resume (used only when <see cref="ResumeSession"/> is true).</summary>
-    public string? SessionName { get; init; }
-
-    /// <summary>Whether to resume <see cref="SessionName"/> rather than start a fresh session.</summary>
-    public bool ResumeSession { get; init; }
+    /// <summary>
+    /// CLI-native <c>SessionId</c> to resume — the value captured from a prior run's
+    /// <see cref="Events.CliRunEvent.SessionStarted"/>. Null/empty starts a fresh
+    /// session. A single id IS the whole resume signal — there is no separate flag.
+    /// </summary>
+    public string? ResumeSessionId { get; init; }
 
     /// <summary>Permission posture (one of <see cref="Model.CliPermissionModes"/>); null normalizes to YOLO.</summary>
     public string? PermissionMode { get; init; }

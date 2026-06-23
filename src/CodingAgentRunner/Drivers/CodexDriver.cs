@@ -78,13 +78,12 @@ internal sealed class CodexDriver : CliDriverBase
         foreach (var flag in CliReasoningFlags.For(CliType, model, thinkingLevel))
             psi.ArgumentList.Add(flag);
 
-        var resume = request.ResumeSession
-                     && !string.IsNullOrWhiteSpace(request.SessionName)
-                     && CodexUuid.IsMatch(request.SessionName!);
+        var resume = !string.IsNullOrWhiteSpace(request.ResumeSessionId)
+                     && CodexUuid.IsMatch(request.ResumeSessionId!);
         if (resume)
         {
             psi.ArgumentList.Add("resume");
-            psi.ArgumentList.Add(request.SessionName!);
+            psi.ArgumentList.Add(request.ResumeSessionId!);
         }
 
         // `-` tells Codex to read the prompt from stdin (see GetPromptStdinPayload).
@@ -103,8 +102,8 @@ internal sealed class CodexDriver : CliDriverBase
         => line.Stream == "stdout" ? CodexEventAdapter.Map(line.Text, runId) : Array.Empty<CliRunEvent>();
 
     /// <summary>Codex resumes only a session UUID; a slug from another CLI is rejected.</summary>
-    public override bool IsCompatibleSessionName(string? sessionName)
-        => !string.IsNullOrWhiteSpace(sessionName) && CodexUuid.IsMatch(sessionName);
+    public override bool IsCompatibleSessionId(string? sessionId)
+        => !string.IsNullOrWhiteSpace(sessionId) && CodexUuid.IsMatch(sessionId);
 
     private string SafeResolve(string path)
     {

@@ -97,6 +97,30 @@ public class CliDriverEngineTests
     }
 
     [Fact]
+    public async Task StreamAsync_PullStream_StartsWithRunStarted_EndsAtTerminal()
+    {
+        using var logs = new TempLogs();
+        var driver = new ProbeDriver("dotnet", ["--version"], logs);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        // One await foreach — no event wiring, no manual "done?" tracking.
+        var seq = new List<CliRunEvent>();
+        await foreach (var e in driver.StreamAsync(new CliRunRequest
+        {
+            RunId = "stream-1", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
+        }, cts.Token))
+        {
+            seq.Add(e);
+        }
+
+        // Same ordering guarantees as the push-event path; the terminal event closes the stream.
+        Assert.IsType<CliRunEvent.RunStarted>(seq[0]);
+        Assert.IsType<CliRunEvent.ProcessExited>(seq[^1]);
+        Assert.Contains(seq, e => e is CliRunEvent.TurnCompleted);
+        Assert.All(seq, e => Assert.Equal("stream-1", e.RunId));   // multiplex filter held
+    }
+
+    [Fact]
     public async Task DuplicateRunId_WhileLive_IsRejected_ButReusableAfterExit()
     {
         using var logs = new TempLogs();

@@ -27,6 +27,17 @@ public interface ICliDriver
     Task<(CliRunInfo? Run, string? Error)> StartAsync(CliRunRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Start a run and consume its typed events as a pull-stream — the single-run
+    /// ergonomic alternative to wiring <see cref="OnRunEvent"/> + <see cref="OnFinished"/>.
+    /// The sequence ends after the run's terminal event (<see cref="CliRunEvent.ProcessExited"/>
+    /// or <see cref="CliRunEvent.Killed"/>); a spawn failure surfaces as a thrown exception,
+    /// and cancelling <paramref name="ct"/> stops the run and ends the enumeration.
+    /// For multiplexing many concurrent runs through one handler, use <see cref="OnRunEvent"/>
+    /// and route by <c>evt.RunId</c> instead.
+    /// </summary>
+    IAsyncEnumerable<CliRunEvent> StreamAsync(CliRunRequest request, CancellationToken ct = default);
+
+    /// <summary>
     /// Terminate the live process for <paramref name="runId"/>. The
     /// <paramref name="reason"/> flows into the outcome classifier so a deliberate
     /// stop is reported as stopped, not as a failed self-crash. Returns false when
@@ -44,12 +55,12 @@ public interface ICliDriver
     CliRunInfo? GetExecution(string runId);
 
     /// <summary>
-    /// Whether <paramref name="sessionName"/> is a session id this CLI can resume.
+    /// Whether <paramref name="sessionId"/> is a session this CLI can resume.
     /// Lets a consumer pre-validate a recorded session before requesting a resume —
     /// e.g. Codex only resumes a UUID, so feeding it a slug from another CLI must be
     /// rejected rather than silently starting fresh. Default drivers accept any.
     /// </summary>
-    bool IsCompatibleSessionName(string? sessionName);
+    bool IsCompatibleSessionId(string? sessionId);
 
     /// <summary>
     /// Drop the in-memory tracking for a finished run, releasing its output buffer

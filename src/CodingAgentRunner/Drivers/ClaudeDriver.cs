@@ -59,10 +59,10 @@ internal sealed class ClaudeDriver : CliDriverBase
         // path for a multi-line / quote-rich prompt.
         psi.ArgumentList.Add("-p");
 
-        if (request.ResumeSession && !string.IsNullOrWhiteSpace(request.SessionName))
+        if (!string.IsNullOrWhiteSpace(request.ResumeSessionId))
         {
             psi.ArgumentList.Add("-r");
-            psi.ArgumentList.Add(request.SessionName!);
+            psi.ArgumentList.Add(request.ResumeSessionId!);
         }
 
         if (!string.IsNullOrWhiteSpace(model))

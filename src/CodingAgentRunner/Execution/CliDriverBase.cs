@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using CodingAgentRunner.Abstractions;
@@ -85,6 +87,43 @@ internal abstract class CliDriverBase : ICliDriver
     {
         try { OnRunEvent?.Invoke(runId, evt); }
         catch (Exception ex) { Logger.LogWarning(ex, "OnRunEvent subscriber threw for {RunId}", runId); }
+    }
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<CliRunEvent> StreamAsync(
+        CliRunRequest request,
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        // A pull-stream over the same event source: subscribe a private handler that
+        // funnels THIS run's events into an unbounded channel, then yield them. The
+        // run's terminal event (ProcessExited / Killed) completes the channel.
+        var runId = request.RunId;
+        var channel = Channel.CreateUnbounded<CliRunEvent>(
+            new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+
+        void Funnel(string id, CliRunEvent evt)
+        {
+            if (id != runId) return;                                  // multiplex filter
+            channel.Writer.TryWrite(evt);
+            if (evt is CliRunEvent.ProcessExited or CliRunEvent.Killed)
+                channel.Writer.TryComplete();                        // terminal → close stream
+        }
+
+        OnRunEvent += Funnel;
+        try
+        {
+            var (_, error) = await StartAsync(request, ct).ConfigureAwait(false);
+            if (error is not null)
+                channel.Writer.TryComplete(new InvalidOperationException(error));
+
+            await foreach (var evt in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                yield return evt;
+        }
+        finally
+        {
+            OnRunEvent -= Funnel;
+            if (ct.IsCancellationRequested) Stop(runId, RunStopReason.UserStop);
+        }
     }
 
     // ── Availability ────────────────────────────────────────────────────
@@ -284,7 +323,7 @@ internal abstract class CliDriverBase : ICliDriver
             Text = $"[runner] Started {CliType} CLI (PID {run.ProcessId})"
                    + (string.IsNullOrWhiteSpace(model) ? "" : $", model={model}")
                    + (string.IsNullOrWhiteSpace(thinking) ? "" : $", thinking={thinking}")
-                   + (request.ResumeSession ? " (resume)" : ""),
+                   + (string.IsNullOrWhiteSpace(request.ResumeSessionId) ? "" : " (resume)"),
         };
         lock (info.OutputBuffer) info.OutputBuffer.Add(startedLine);
         info.OutputLog.Append(startedLine);
@@ -459,7 +498,7 @@ internal abstract class CliDriverBase : ICliDriver
         => _processes.TryGetValue(runId, out var info) ? info.Execution : null;
 
     /// <inheritdoc />
-    public virtual bool IsCompatibleSessionName(string? sessionName) => true;
+    public virtual bool IsCompatibleSessionId(string? sessionId) => true;
 
     /// <inheritdoc />
     public bool Forget(string runId)
