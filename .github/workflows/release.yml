@@ -1,8 +1,13 @@
 name: release
 
 # Publishes the package to nuget.org when a version tag is pushed (e.g. v0.1.0).
-# The version is derived from the tag. The nuget.org API key is read ONLY from the
-# repository secret NUGET_API_KEY — it is never stored in the repo.
+# The version is derived from the tag.
+#
+# Auth uses nuget.org **Trusted Publishing** (OIDC): there is NO API key to store.
+# GitHub Actions mints a short-lived OIDC token; the NuGet/login action exchanges
+# it for a temporary key, validated against the Trusted Publishing policy on
+# nuget.org (package owner RobertMischke2, repo RobertMischke/coding-agent-runner,
+# workflow release.yml).
 #
 # To cut a release: `scripts/release.sh 0.1.0` (or push a `v0.1.0` tag manually).
 on:
@@ -11,9 +16,10 @@ on:
 
 jobs:
   publish:
-    name: pack & push to nuget.org
+    name: pack & publish to nuget.org
     runs-on: ubuntu-latest
     permissions:
+      id-token: write   # required to request the OIDC token for Trusted Publishing
       contents: read
     steps:
       - uses: actions/checkout@v4
@@ -40,15 +46,15 @@ jobs:
           -p:Version=${{ steps.ver.outputs.version }}
           -o artifacts
 
+      - name: Authenticate to nuget.org (Trusted Publishing / OIDC)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: RobertMischke2
+
       - name: Push to nuget.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          if [ -z "$NUGET_API_KEY" ]; then
-            echo "::error::NUGET_API_KEY repository secret is not set; cannot publish." >&2
-            exit 1
-          fi
-          dotnet nuget push "artifacts/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+        run: >
+          dotnet nuget push "artifacts/*.nupkg"
+          --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
