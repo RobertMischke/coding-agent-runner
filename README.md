@@ -125,6 +125,21 @@ dotnet test
 
 Requires the .NET 10 SDK.
 
+## Releasing
+
+Releases are published to **nuget.org** by the `release` GitHub workflow when a
+`v*.*.*` tag is pushed; the package version is derived from the tag.
+
+```bash
+scripts/release.sh 0.1.0      # validates, tests, tags v0.1.0, pushes the tag
+# scripts/pack.sh             # local pack into ./artifacts (no publish)
+```
+
+The nuget.org API key is read **only** from the repository secret
+`NUGET_API_KEY` (Settings → Secrets and variables → Actions). It is never stored
+in the repo, the scripts, or the workflow file — the workflow references it as
+`${{ secrets.NUGET_API_KEY }}`. While the API is pre-1.0, publish `0.x` versions.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Issues and PRs welcome.

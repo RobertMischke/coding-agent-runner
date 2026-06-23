@@ -55,3 +55,20 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Secrets — NEVER commit. The nuget.org API key lives ONLY as the GitHub repo
+# secret NUGET_API_KEY; these patterns guard against a local key file slipping in.
+*.apikey
+*.pfx
+*.snk
+nuget*.key
+.nuget-api-key
+.nuget.apikey
+secrets.json
+**/appsettings.*.local.json
+
+# Agent-orchestrator runtime state (this repo is also driven as a project by an
+# external orchestrator; its job/session state must not land in the package repo).
+.orchestrator/
+.runtime/
+
