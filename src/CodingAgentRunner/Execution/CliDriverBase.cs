@@ -246,6 +246,14 @@ internal abstract class CliDriverBase : ICliDriver
     /// </summary>
     protected virtual Task<ChildHandle> SpawnChildAsync(ProcessStartInfo psi, CliRunRequest request, string? model, CancellationToken ct)
     {
+        // A consumer-injected spawner (e.g. a Windows PTY) takes over the launch; the
+        // engine treats its result identically to the built-in pipe spawn.
+        if (Options.Spawner is { } spawner)
+        {
+            var s = spawner.Spawn(psi);
+            return Task.FromResult(new ChildHandle(s.Process, s.Stdin, s.Stdout, s.Stderr, s.KillOverride));
+        }
+
         var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
         p.Start();
         var stdin = psi.RedirectStandardInput ? p.StandardInput.BaseStream : Stream.Null;

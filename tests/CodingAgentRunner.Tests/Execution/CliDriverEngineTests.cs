@@ -20,8 +20,8 @@ public class CliDriverEngineTests
         private readonly string _exe;
         private readonly string[] _args;
 
-        public ProbeDriver(string exe, string[] args, IRunLogPathProvider logs)
-            : base(new CliOptions { AllowAgentGitMutation = true }, null, logs) // git-guard off: keep PATH clean
+        public ProbeDriver(string exe, string[] args, IRunLogPathProvider logs, ICliProcessSpawner? spawner = null)
+            : base(new CliOptions { AllowAgentGitMutation = true, Spawner = spawner }, null, logs) // git-guard off: keep PATH clean
         {
             _exe = exe;
             _args = args;
@@ -252,6 +252,37 @@ public class CliDriverEngineTests
 
         // Stop on an unknown run id returns false.
         Assert.False(driver.Stop("no-such-run"));
+    }
+
+    // A custom spawner that does the same plain-pipe launch as the built-in, but counts.
+    private sealed class CountingSpawner : ICliProcessSpawner
+    {
+        public int Count;
+        public CliSpawn Spawn(ProcessStartInfo psi)
+        {
+            Count++;
+            var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            p.Start();
+            var stdin = psi.RedirectStandardInput ? p.StandardInput.BaseStream : Stream.Null;
+            return new CliSpawn(p, stdin, p.StandardOutput, p.StandardError);
+        }
+    }
+
+    [Fact]
+    public async Task CustomSpawner_TakesOverTheLaunch()
+    {
+        using var logs = new TempLogs();
+        var spawner = new CountingSpawner();
+        var driver = new ProbeDriver("dotnet", ["--version"], logs, spawner);
+
+        var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
+
+        await driver.StartAsync(new CliRunRequest { RunId = "sp", Prompt = "x", WorkingDirectory = Path.GetTempPath() });
+        var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.Equal(1, spawner.Count);            // the engine launched via the injected spawner
+        Assert.Equal("completed", final.Status);   // and the run completed normally through it
     }
 
     [Fact]

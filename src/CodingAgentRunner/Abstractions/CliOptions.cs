@@ -30,6 +30,13 @@ public sealed record CliOptions
 
     /// <summary>Process-hardening configuration.</summary>
     public CliHardeningOptions Hardening { get; init; } = new();
+
+    /// <summary>
+    /// Optional custom process spawner — inject one (e.g. a Windows pseudo-terminal
+    /// spawner) to change how the engine launches a CLI. Null uses plain redirected
+    /// pipes. See <see cref="ICliProcessSpawner"/>.
+    /// </summary>
+    public ICliProcessSpawner? Spawner { get; init; }
 }
 
 /// <summary>
