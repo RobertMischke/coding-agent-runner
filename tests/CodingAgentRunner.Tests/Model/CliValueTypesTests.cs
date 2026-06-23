@@ -91,4 +91,41 @@ public class CliValueTypesTests
         // No selector -> null regardless of request.
         Assert.Null(CliThinkingLevels.Normalize("claude", "claude-haiku-4-5", "high"));
     }
+
+    [Theory]
+    [InlineData(null, CliPermissionModes.Yolo)]
+    [InlineData("", CliPermissionModes.Yolo)]
+    [InlineData("   ", CliPermissionModes.Yolo)]
+    [InlineData("YOLO", CliPermissionModes.Yolo)]
+    [InlineData(" read-only ", CliPermissionModes.ReadOnly)]
+    [InlineData("Workspace-Write", CliPermissionModes.WorkspaceWrite)]
+    [InlineData("custom", CliPermissionModes.Custom)]
+    [InlineData("nonsense", CliPermissionModes.Yolo)]   // unknown → Yolo (never an interactive hang)
+    public void CliPermissionModes_NormalizeMatrix(string? input, string expected)
+        => Assert.Equal(expected, CliPermissionModes.Normalize(input));
+
+    [Fact]
+    public void CliPermissionFlags_CopilotInjectsNothingBelowYolo()
+    {
+        Assert.Empty(CliPermissionFlags.For("copilot", CliPermissionModes.ReadOnly));
+        Assert.Empty(CliPermissionFlags.For("copilot", CliPermissionModes.WorkspaceWrite));
+        Assert.Empty(CliPermissionFlags.For("copilot", CliPermissionModes.Custom));
+    }
+
+    [Fact]
+    public void PermissionAndContext_Modes_RoundTripThroughNormalize()
+    {
+        foreach (var m in CliPermissionModes.All)
+            Assert.Equal(m, CliPermissionModes.Normalize(m));
+        foreach (var c in CliContextModes.All)
+            Assert.Equal(c, CliContextModes.Normalize(c));
+    }
+
+    [Theory]
+    [InlineData(null, "copilot")]                  // unknown / empty -> copilot
+    [InlineData("GEMINI", "gemini")]               // case-insensitive
+    [InlineData("  gemini  ", "copilot")]          // NOT trimmed (unlike CliPermissionModes) → unknown → copilot
+    [InlineData("human", "copilot")]               // the sentinel is not a selectable driver
+    public void CliTypes_Normalize_IsCaseInsensitive_ButDoesNotTrim(string? input, string expected)
+        => Assert.Equal(expected, CliTypes.Normalize(input));
 }
