@@ -4,12 +4,12 @@ using CodingAgentRunner.Model;
 namespace CodingAgentRunner.Execution;
 
 /// <summary>
-/// The surface every CLI backend exposes. A consumer resolves a backend for a CLI
+/// The surface every CLI driver exposes. A consumer resolves a driver for a CLI
 /// type, subscribes to <see cref="OnRunEvent"/> (and optionally the raw streams),
 /// and drives runs with <see cref="StartAsync"/> / <see cref="Stop"/> — without
 /// knowing which CLI executes a given run.
 /// </summary>
-public interface ICliBackend
+public interface ICliDriver
 {
     /// <summary>One of <see cref="CliTypes"/>.</summary>
     string CliType { get; }
@@ -47,7 +47,7 @@ public interface ICliBackend
     /// Whether <paramref name="sessionName"/> is a session id this CLI can resume.
     /// Lets a consumer pre-validate a recorded session before requesting a resume —
     /// e.g. Codex only resumes a UUID, so feeding it a slug from another CLI must be
-    /// rejected rather than silently starting fresh. Default backends accept any.
+    /// rejected rather than silently starting fresh. Default drivers accept any.
     /// </summary>
     bool IsCompatibleSessionName(string? sessionName);
 
@@ -60,7 +60,7 @@ public interface ICliBackend
     /// </summary>
     bool Forget(string runId);
 
-    /// <summary>Whether this backend can isolate its persistent state for a clean run.</summary>
+    /// <summary>Whether this driver can isolate its persistent state for a clean run.</summary>
     bool SupportsCleanContext { get; }
 
     /// <summary>Raw output lines as they stream (one per stdout/stderr/system line).</summary>

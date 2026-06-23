@@ -8,10 +8,10 @@ using CodingAgentRunner.Execution;
 using CodingAgentRunner.Execution.Hardening;
 using CodingAgentRunner.Model;
 
-namespace CodingAgentRunner.Backends;
+namespace CodingAgentRunner.Drivers;
 
 /// <summary>
-/// Codex backend. Invokes <c>codex exec --experimental-json</c>, maps the JSONL
+/// Codex driver. Invokes <c>codex exec --experimental-json</c>, maps the JSONL
 /// frames via <see cref="CodexEventAdapter"/>, and isolates clean runs through
 /// <c>CODEX_HOME</c>.
 ///
@@ -24,15 +24,15 @@ namespace CodingAgentRunner.Backends;
 /// sentinel.
 /// </para>
 /// </summary>
-public sealed class CodexBackend : CliBackendBase
+internal sealed class CodexDriver : CliDriverBase
 {
     // Codex `exec resume` only accepts a session UUID; a slug from another CLI
     // would make it error out, so we gate resume on this shape.
     private static readonly Regex CodexUuid =
         new(@"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", RegexOptions.Compiled);
 
-    /// <summary>Create a Codex backend.</summary>
-    public CodexBackend(
+    /// <summary>Create a Codex driver.</summary>
+    public CodexDriver(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,

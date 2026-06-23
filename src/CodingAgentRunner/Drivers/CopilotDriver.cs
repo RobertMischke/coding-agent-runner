@@ -5,14 +5,14 @@ using CodingAgentRunner.Execution;
 using CodingAgentRunner.Execution.Hardening;
 using CodingAgentRunner.Model;
 
-namespace CodingAgentRunner.Backends;
+namespace CodingAgentRunner.Drivers;
 
 /// <summary>
-/// GitHub Copilot CLI backend. Invokes <c>copilot -p &lt;prompt&gt; --allow-all</c>
+/// GitHub Copilot CLI driver. Invokes <c>copilot -p &lt;prompt&gt; --allow-all</c>
 /// headlessly.
 ///
 /// <para>
-/// Copilot has no documented stream-json mode, so this backend has no frame
+/// Copilot has no documented stream-json mode, so this driver has no frame
 /// adapter: it raises <see cref="Events.CliRunEvent.RunStarted"/> /
 /// <see cref="Events.CliRunEvent.ProcessExited"/> and streams raw output lines,
 /// but not the rich typed events the other CLIs emit. Copilot also block-buffers
@@ -21,10 +21,10 @@ namespace CodingAgentRunner.Backends;
 /// redirect).
 /// </para>
 /// </summary>
-public sealed class CopilotBackend : CliBackendBase
+internal sealed class CopilotDriver : CliDriverBase
 {
-    /// <summary>Create a Copilot backend.</summary>
-    public CopilotBackend(
+    /// <summary>Create a Copilot driver.</summary>
+    public CopilotDriver(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,

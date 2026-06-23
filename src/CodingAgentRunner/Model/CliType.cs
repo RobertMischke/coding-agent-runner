@@ -1,7 +1,7 @@
 namespace CodingAgentRunner.Model;
 
 /// <summary>
-/// Identifiers for the supported CLI backends. The string values are stable and
+/// Identifiers for the supported CLI drivers. The string values are stable and
 /// safe to persist or use as URL/route segments.
 /// </summary>
 public static class CliTypes
@@ -18,14 +18,14 @@ public static class CliTypes
     /// <summary>
     /// Sentinel for "no automated CLI resolver" (e.g. a router fallback that needs
     /// a human). Deliberately NOT part of <see cref="All"/> / <see cref="IsValid"/> —
-    /// it is a comparison sentinel, not a selectable backend.
+    /// it is a comparison sentinel, not a selectable driver.
     /// </summary>
     public const string Human   = "human";
 
-    /// <summary>All selectable CLI backends.</summary>
+    /// <summary>All selectable CLI drivers.</summary>
     public static readonly string[] All = [Copilot, Claude, Codex, Gemini];
 
-    /// <summary>True when <paramref name="type"/> is one of the selectable backends.</summary>
+    /// <summary>True when <paramref name="type"/> is one of the selectable drivers.</summary>
     public static bool IsValid(string? type) =>
         !string.IsNullOrWhiteSpace(type) && All.Contains(type, StringComparer.OrdinalIgnoreCase);
 

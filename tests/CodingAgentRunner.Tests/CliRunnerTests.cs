@@ -1,5 +1,5 @@
 using CodingAgentRunner;
-using CodingAgentRunner.Backends;
+using CodingAgentRunner.Drivers;
 using CodingAgentRunner.Model;
 using Xunit;
 
@@ -11,10 +11,10 @@ public class CliRunnerTests
     public void Get_ResolvesEachSupportedCli()
     {
         var runner = new CliRunner();
-        Assert.IsType<ClaudeBackend>(runner.Get("claude"));
-        Assert.IsType<CodexBackend>(runner.Get("codex"));
-        Assert.IsType<GeminiBackend>(runner.Get("gemini"));
-        Assert.IsType<CopilotBackend>(runner.Get("copilot"));
+        Assert.IsType<ClaudeDriver>(runner.Get("claude"));
+        Assert.IsType<CodexDriver>(runner.Get("codex"));
+        Assert.IsType<GeminiDriver>(runner.Get("gemini"));
+        Assert.IsType<CopilotDriver>(runner.Get("copilot"));
     }
 
     [Fact]
@@ -29,14 +29,14 @@ public class CliRunnerTests
     {
         var runner = new CliRunner();
         // CliTypes.Normalize folds unknown values to copilot, so an odd token resolves.
-        Assert.True(runner.TryGet("nonsense", out var backend));
-        Assert.Equal(CliTypes.Copilot, backend.CliType);
+        Assert.True(runner.TryGet("nonsense", out var driver));
+        Assert.Equal(CliTypes.Copilot, driver.CliType);
     }
 
     [Fact]
-    public void Backends_CoverAllFour()
+    public void Drivers_CoverAllFour()
     {
         var runner = new CliRunner();
-        Assert.Equal(4, runner.Backends.Count);
+        Assert.Equal(4, runner.Drivers.Count);
     }
 }

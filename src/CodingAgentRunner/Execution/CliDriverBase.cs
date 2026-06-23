@@ -12,7 +12,7 @@ using CodingAgentRunner.Model;
 namespace CodingAgentRunner.Execution;
 
 /// <summary>
-/// The spawn engine shared by every CLI backend. It owns the lifecycle a run goes
+/// The spawn engine shared by every CLI driver. It owns the lifecycle a run goes
 /// through — resolve binary &#8594; harden environment &#8594; install the git guard
 /// &#8594; spawn &#8594; stream stdout/stderr &#8594; map lines to typed
 /// <see cref="CliRunEvent"/>s &#8594; classify the exit — and leaves only the
@@ -26,10 +26,10 @@ namespace CodingAgentRunner.Execution;
 /// output-sentinel scraping.
 /// </para>
 /// </summary>
-public abstract class CliBackendBase : ICliBackend
+internal abstract class CliDriverBase : ICliDriver
 {
     // Per-run tracking, keyed by CliRunRequest.RunId. Private: the contract is
-    // expressed entirely through ICliBackend's events + GetExecution/GetOutput.
+    // expressed entirely through ICliDriver's events + GetExecution/GetOutput.
     private readonly ConcurrentDictionary<string, ProcInfo> _processes = new();
 
     /// <summary>Consumer configuration (paths, git-guard, hardening).</summary>
@@ -45,7 +45,7 @@ public abstract class CliBackendBase : ICliBackend
     protected IUserHomeProvider Home { get; }
 
     /// <summary>Create the engine with consumer-supplied configuration and providers.</summary>
-    protected CliBackendBase(
+    protected CliDriverBase(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,
@@ -135,7 +135,7 @@ public abstract class CliBackendBase : ICliBackend
         return BuildStartInfo(request, model, thinking);
     }
 
-    /// <summary>Test hook: the stdin payload this backend would pipe for the request (model normalized).</summary>
+    /// <summary>Test hook: the stdin payload this driver would pipe for the request (model normalized).</summary>
     internal string? BuildPromptStdinPayloadForTest(CliRunRequest request)
         => GetPromptStdinPayload(request, NormalizeModelForInvocation(request.Model));
 
@@ -151,7 +151,7 @@ public abstract class CliBackendBase : ICliBackend
 
     /// <summary>
     /// Map one raw stdout/stderr line to zero or more <see cref="CliRunEvent"/>s.
-    /// Default: nothing (a backend without an adapter rides the silence watchdog).
+    /// Default: nothing (a driver without an adapter rides the silence watchdog).
     /// </summary>
     protected virtual IEnumerable<CliRunEvent> MapLineToRunEvents(string runId, CliOutputLine line)
         => Array.Empty<CliRunEvent>();
@@ -162,7 +162,7 @@ public abstract class CliBackendBase : ICliBackend
 
     /// <summary>
     /// Spawn the child. Default uses <see cref="Process"/> with redirected pipes;
-    /// PTY-based backends override to keep a Node CLI's stdout line-flushing.
+    /// PTY-based drivers override to keep a Node CLI's stdout line-flushing.
     /// </summary>
     protected virtual Task<ChildHandle> SpawnChildAsync(ProcessStartInfo psi, CliRunRequest request, string? model, CancellationToken ct)
     {
@@ -535,7 +535,7 @@ public abstract class CliBackendBase : ICliBackend
         public RunLogStore OutputLog { get; init; } = null!;
         /// <summary>The child's stdin stream, when one was captured.</summary>
         public Stream? ChildStdin { get; init; }
-        /// <summary>A PTY backend's own kill action, when present.</summary>
+        /// <summary>A PTY driver's own kill action, when present.</summary>
         public Action<RunStopReason>? KillOverride { get; init; }
         /// <summary>The clean-context home to tear down on exit, when used.</summary>
         public CleanContextPreparation? CleanContext { get; set; }

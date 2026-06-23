@@ -17,7 +17,7 @@ public class CliValueTypesTests
     }
 
     [Fact]
-    public void CliTypes_HumanIsNotASelectableBackend()
+    public void CliTypes_HumanIsNotASelectableDriver()
     {
         Assert.False(CliTypes.IsValid("human"));
         Assert.DoesNotContain(CliTypes.Human, CliTypes.All);

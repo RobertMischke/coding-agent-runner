@@ -6,7 +6,7 @@ namespace CodingAgentRunner.Execution;
 /// </summary>
 public sealed record CliRunRequest
 {
-    /// <summary>Consumer-assigned correlation id; unique among live runs of one backend.</summary>
+    /// <summary>Consumer-assigned correlation id; unique among live runs of one driver.</summary>
     public required string RunId { get; init; }
 
     /// <summary>The prompt to hand the agent.</summary>

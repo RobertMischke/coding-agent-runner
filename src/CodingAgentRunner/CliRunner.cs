@@ -1,21 +1,21 @@
 using Microsoft.Extensions.Logging;
 using CodingAgentRunner.Abstractions;
-using CodingAgentRunner.Backends;
+using CodingAgentRunner.Drivers;
 using CodingAgentRunner.Execution;
 using CodingAgentRunner.Model;
 
 namespace CodingAgentRunner;
 
 /// <summary>
-/// The entry point: builds and holds one <see cref="ICliBackend"/> per supported
+/// The entry point: builds and holds one <see cref="ICliDriver"/> per supported
 /// CLI from a single set of options, so a consumer wires the library once and then
-/// resolves a backend by CLI type.
+/// resolves a driver by CLI type.
 ///
 /// <code>
 /// var runner = new CliRunner(new CliOptions());
-/// var backend = runner.Get("claude");
-/// backend.OnRunEvent += (runId, evt) => /* drive a watchdog / UI */;
-/// var (run, error) = await backend.StartAsync(new CliRunRequest
+/// var driver = runner.Get("claude");
+/// driver.OnRunEvent += (runId, evt) => /* drive a watchdog / UI */;
+/// var (run, error) = await driver.StartAsync(new CliRunRequest
 /// {
 ///     RunId = "run-1",
 ///     Prompt = "Refactor the parser",
@@ -25,37 +25,37 @@ namespace CodingAgentRunner;
 /// </summary>
 public sealed class CliRunner
 {
-    private readonly Dictionary<string, ICliBackend> _backends;
+    private readonly Dictionary<string, ICliDriver> _drivers;
 
-    /// <summary>Build a runner with backends for every supported CLI sharing the given options/providers.</summary>
+    /// <summary>Build a runner with drivers for every supported CLI sharing the given options/providers.</summary>
     public CliRunner(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,
         IUserHomeProvider? home = null)
     {
-        _backends = new Dictionary<string, ICliBackend>(StringComparer.OrdinalIgnoreCase)
+        _drivers = new Dictionary<string, ICliDriver>(StringComparer.OrdinalIgnoreCase)
         {
-            [CliTypes.Claude]  = new ClaudeBackend(options, logger, logPaths, home),
-            [CliTypes.Codex]   = new CodexBackend(options, logger, logPaths, home),
-            [CliTypes.Gemini]  = new GeminiBackend(options, logger, logPaths, home),
-            [CliTypes.Copilot] = new CopilotBackend(options, logger, logPaths, home),
+            [CliTypes.Claude]  = new ClaudeDriver(options, logger, logPaths, home),
+            [CliTypes.Codex]   = new CodexDriver(options, logger, logPaths, home),
+            [CliTypes.Gemini]  = new GeminiDriver(options, logger, logPaths, home),
+            [CliTypes.Copilot] = new CopilotDriver(options, logger, logPaths, home),
         };
     }
 
-    /// <summary>The backends, one per supported CLI.</summary>
-    public IReadOnlyCollection<ICliBackend> Backends => _backends.Values;
+    /// <summary>The drivers, one per supported CLI.</summary>
+    public IReadOnlyCollection<ICliDriver> Drivers => _drivers.Values;
 
     /// <summary>The CLI types this runner can resolve.</summary>
-    public IReadOnlyCollection<string> SupportedCliTypes => _backends.Keys;
+    public IReadOnlyCollection<string> SupportedCliTypes => _drivers.Keys;
 
-    /// <summary>Resolve the backend for <paramref name="cliType"/> (normalized). Throws when unknown.</summary>
-    public ICliBackend Get(string cliType)
-        => TryGet(cliType, out var backend)
-            ? backend
-            : throw new ArgumentException($"No backend for CLI type '{cliType}'.", nameof(cliType));
+    /// <summary>Resolve the driver for <paramref name="cliType"/> (normalized). Throws when unknown.</summary>
+    public ICliDriver Get(string cliType)
+        => TryGet(cliType, out var driver)
+            ? driver
+            : throw new ArgumentException($"No driver for CLI type '{cliType}'.", nameof(cliType));
 
-    /// <summary>Try to resolve the backend for <paramref name="cliType"/> (normalized).</summary>
-    public bool TryGet(string cliType, out ICliBackend backend)
-        => _backends.TryGetValue(Model.CliTypes.Normalize(cliType), out backend!);
+    /// <summary>Try to resolve the driver for <paramref name="cliType"/> (normalized).</summary>
+    public bool TryGet(string cliType, out ICliDriver driver)
+        => _drivers.TryGetValue(Model.CliTypes.Normalize(cliType), out driver!);
 }

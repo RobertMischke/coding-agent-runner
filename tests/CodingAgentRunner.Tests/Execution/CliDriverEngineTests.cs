@@ -8,19 +8,19 @@ using Xunit;
 
 namespace CodingAgentRunner.Tests.Execution;
 
-public class CliBackendEngineTests
+public class CliDriverEngineTests
 {
     /// <summary>
-    /// A real backend over a trivial, cross-platform process (`dotnet --version`)
+    /// A real driver over a trivial, cross-platform process (`dotnet --version`)
     /// that exits 0 after printing one line. It maps every stdout line to a
     /// TurnCompleted so the adapter-&gt;event wiring is exercised end-to-end.
     /// </summary>
-    private sealed class ProbeBackend : CliBackendBase
+    private sealed class ProbeDriver : CliDriverBase
     {
         private readonly string _exe;
         private readonly string[] _args;
 
-        public ProbeBackend(string exe, string[] args, IRunLogPathProvider logs)
+        public ProbeDriver(string exe, string[] args, IRunLogPathProvider logs)
             : base(new CliOptions { AllowAgentGitMutation = true }, null, logs) // git-guard off: keep PATH clean
         {
             _exe = exe;
@@ -55,17 +55,17 @@ public class CliBackendEngineTests
     public async Task Run_StreamsOutput_RaisesTypedEvents_AndClassifiesCleanExitAsCompleted()
     {
         using var logs = new TempLogs();
-        var backend = new ProbeBackend("dotnet", ["--version"], logs);
+        var driver = new ProbeDriver("dotnet", ["--version"], logs);
 
         var events = new ConcurrentQueue<CliRunEvent>();
-        backend.OnRunEvent += (_, e) => events.Enqueue(e);
+        driver.OnRunEvent += (_, e) => events.Enqueue(e);
 
         var started = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
-        backend.OnStarted += (_, r) => started.TrySetResult(r);
-        backend.OnFinished += (_, r) => finished.TrySetResult(r);
+        driver.OnStarted += (_, r) => started.TrySetResult(r);
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
 
-        var (run, error) = await backend.StartAsync(new CliRunRequest
+        var (run, error) = await driver.StartAsync(new CliRunRequest
         {
             RunId = "engine-test",
             Prompt = "unused",
@@ -91,21 +91,21 @@ public class CliBackendEngineTests
         Assert.Contains(seq, e => e is CliRunEvent.TurnCompleted);
 
         // The version line was captured.
-        var output = backend.GetExecution("engine-test");
+        var output = driver.GetExecution("engine-test");
         Assert.Equal("completed", output!.Status);
-        Assert.Contains(backend.GetOutput("engine-test"), l => l.Stream == "stdout");
+        Assert.Contains(driver.GetOutput("engine-test"), l => l.Stream == "stdout");
     }
 
     [Fact]
     public async Task DuplicateRunId_WhileLive_IsRejected_ButReusableAfterExit()
     {
         using var logs = new TempLogs();
-        var backend = new ProbeBackend("dotnet", ["--version"], logs);
+        var driver = new ProbeDriver("dotnet", ["--version"], logs);
 
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        backend.OnFinished += (_, _) => finished.TrySetResult();
+        driver.OnFinished += (_, _) => finished.TrySetResult();
 
-        var (run1, err1) = await backend.StartAsync(new CliRunRequest
+        var (run1, err1) = await driver.StartAsync(new CliRunRequest
         {
             RunId = "dup", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
         });
@@ -115,7 +115,7 @@ public class CliBackendEngineTests
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
         // After the first run exits, the same id can be reused.
-        var (run2, err2) = await backend.StartAsync(new CliRunRequest
+        var (run2, err2) = await driver.StartAsync(new CliRunRequest
         {
             RunId = "dup", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
         });
@@ -131,28 +131,28 @@ public class CliBackendEngineTests
         var (exe, args) = OperatingSystem.IsWindows()
             ? ("ping", new[] { "-n", "20", "127.0.0.1" })
             : ("sleep", new[] { "20" });
-        var backend = new ProbeBackend(exe, args, logs);
+        var driver = new ProbeDriver(exe, args, logs);
 
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
         var sawKilled = false;
         var sawProcessExited = false;
-        backend.OnStarted += (_, _) => started.TrySetResult();
-        backend.OnFinished += (_, r) => finished.TrySetResult(r);
-        backend.OnRunEvent += (_, e) =>
+        driver.OnStarted += (_, _) => started.TrySetResult();
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
+        driver.OnRunEvent += (_, e) =>
         {
             if (e is CliRunEvent.Killed) sawKilled = true;
             if (e is CliRunEvent.ProcessExited) sawProcessExited = true;
         };
 
-        var (run, err) = await backend.StartAsync(new CliRunRequest
+        var (run, err) = await driver.StartAsync(new CliRunRequest
         {
             RunId = "stop-test", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
         });
         Assert.Null(err);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
-        Assert.True(backend.Stop("stop-test", RunStopReason.UserStop));
+        Assert.True(driver.Stop("stop-test", RunStopReason.UserStop));
         var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
         // The deliberate stop is classified as 'stopped' (NOT 'failed' from the -1 kill),
@@ -162,31 +162,31 @@ public class CliBackendEngineTests
         Assert.False(sawProcessExited, "a deliberately stopped run must not raise ProcessExited");
 
         // Stop on an unknown run id returns false.
-        Assert.False(backend.Stop("no-such-run"));
+        Assert.False(driver.Stop("no-such-run"));
     }
 
     [Fact]
     public async Task Forget_EvictsInMemory_GetOutputThenFallsBackToDisk()
     {
         using var logs = new TempLogs();
-        var backend = new ProbeBackend("dotnet", ["--version"], logs);
+        var driver = new ProbeDriver("dotnet", ["--version"], logs);
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        backend.OnFinished += (_, _) => finished.TrySetResult();
+        driver.OnFinished += (_, _) => finished.TrySetResult();
 
-        await backend.StartAsync(new CliRunRequest
+        await driver.StartAsync(new CliRunRequest
         {
             RunId = "f1", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
         });
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        Assert.NotNull(backend.GetExecution("f1"));                 // tracked until forgotten
-        Assert.True(backend.Forget("f1"));
-        Assert.Null(backend.GetExecution("f1"));                    // evicted
+        Assert.NotNull(driver.GetExecution("f1"));                 // tracked until forgotten
+        Assert.True(driver.Forget("f1"));
+        Assert.Null(driver.GetExecution("f1"));                    // evicted
 
         // GetOutput now reads the persisted per-stream log from disk.
-        var fromDisk = backend.GetOutput("f1");
+        var fromDisk = driver.GetOutput("f1");
         Assert.Contains(fromDisk, l => l.Stream == "stdout");
 
-        Assert.False(backend.Forget("f1"));                         // already gone
+        Assert.False(driver.Forget("f1"));                         // already gone
     }
 }

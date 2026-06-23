@@ -20,7 +20,7 @@ namespace CodingAgentRunner.Execution;
 /// </para>
 /// <para>
 /// PTY-spawned children merge stderr into the main stream by construction; PTY
-/// backends therefore set <see cref="Stderr"/> to a never-emitting reader and let
+/// drivers therefore set <see cref="Stderr"/> to a never-emitting reader and let
 /// the runner's stdout loop see everything.
 /// </para>
 /// </summary>

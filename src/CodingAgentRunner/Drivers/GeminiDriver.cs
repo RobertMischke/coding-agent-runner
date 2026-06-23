@@ -7,20 +7,20 @@ using CodingAgentRunner.Execution;
 using CodingAgentRunner.Execution.Hardening;
 using CodingAgentRunner.Model;
 
-namespace CodingAgentRunner.Backends;
+namespace CodingAgentRunner.Drivers;
 
 /// <summary>
-/// Gemini backend. Invokes <c>gemini -o stream-json</c> and maps the NDJSON frames
+/// Gemini driver. Invokes <c>gemini -o stream-json</c> and maps the NDJSON frames
 /// via <see cref="GeminiEventAdapter"/>. The folder-trust prompt is always
 /// dismissed (<c>--skip-trust</c>) so an unattended run never blocks on it.
 ///
 /// <para>Gemini exposes no config-home redirect, so it is shared-only
 /// (<c>SupportsCleanContext</c> is false).</para>
 /// </summary>
-public sealed class GeminiBackend : CliBackendBase
+internal sealed class GeminiDriver : CliDriverBase
 {
-    /// <summary>Create a Gemini backend.</summary>
-    public GeminiBackend(
+    /// <summary>Create a Gemini driver.</summary>
+    public GeminiDriver(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,

@@ -7,10 +7,10 @@ using CodingAgentRunner.Execution;
 using CodingAgentRunner.Execution.Hardening;
 using CodingAgentRunner.Model;
 
-namespace CodingAgentRunner.Backends;
+namespace CodingAgentRunner.Drivers;
 
 /// <summary>
-/// Claude Code backend. Invokes <c>claude -p &lt;prompt&gt; --output-format
+/// Claude Code driver. Invokes <c>claude -p &lt;prompt&gt; --output-format
 /// stream-json --verbose</c>, maps the NDJSON frames via
 /// <see cref="ClaudeEventAdapter"/>, and isolates clean runs through
 /// <c>CLAUDE_CONFIG_DIR</c>.
@@ -23,10 +23,10 @@ namespace CodingAgentRunner.Backends;
 /// the first line of its brief.
 /// </para>
 /// </summary>
-public sealed class ClaudeBackend : CliBackendBase
+internal sealed class ClaudeDriver : CliDriverBase
 {
-    /// <summary>Create a Claude backend.</summary>
-    public ClaudeBackend(
+    /// <summary>Create a Claude driver.</summary>
+    public ClaudeDriver(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,

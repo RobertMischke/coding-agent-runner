@@ -80,7 +80,7 @@ public record CliContextSource
 
 /// <summary>
 /// The closed set of <see cref="CliContextSource.Kind"/> values. Kept as constants
-/// so a frontend filter / glyph layer and the backend producers agree.
+/// so a frontend filter / glyph layer and the driver producers agree.
 /// </summary>
 public static class CliContextSourceKinds
 {
