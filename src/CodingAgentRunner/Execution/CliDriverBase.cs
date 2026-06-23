@@ -24,7 +24,7 @@ namespace CodingAgentRunner.Execution;
 /// <para>
 /// Completion is the CLI's REAL signal: a <see cref="CliRunEvent.TurnCompleted"/>
 /// raised by the subclass's adapter plus the classified
-/// <see cref="CliRunEvent.ProcessExited"/> from this engine. There is no
+/// <see cref="CliRunEvent.RunEnded"/> from this engine. There is no
 /// output-sentinel scraping.
 /// </para>
 /// </summary>
@@ -121,7 +121,7 @@ internal abstract class CliDriverBase : ICliDriver
     {
         // A pull-stream over the same event source: subscribe a private handler that
         // funnels THIS run's events into an unbounded channel, then yield them. The
-        // run's terminal event (ProcessExited / Killed) completes the channel.
+        // run's terminal event (RunEnded) completes the channel.
         var runId = request.RunId;
         var channel = Channel.CreateUnbounded<CliRunEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
@@ -130,7 +130,7 @@ internal abstract class CliDriverBase : ICliDriver
         {
             if (id != runId) return;                                  // multiplex filter
             channel.Writer.TryWrite(evt);
-            if (evt is CliRunEvent.ProcessExited or CliRunEvent.Killed)
+            if (evt is CliRunEvent.RunEnded)
                 channel.Writer.TryComplete();                        // terminal → close stream
         }
 
@@ -381,7 +381,12 @@ internal abstract class CliDriverBase : ICliDriver
                 try { events = MapLineToRunEvents(runId, raw); }
                 catch (Exception ex) { Logger.LogWarning(ex, "MapLineToRunEvents threw for {RunId}; skipping typed events for this line", runId); }
                 if (events != null)
-                    foreach (var evt in events) RaiseRunEvent(runId, evt);
+                    foreach (var evt in events)
+                    {
+                        // Remember the last turn-failure so RunEnded.Reason can carry it on a Failed outcome.
+                        if (evt is CliRunEvent.TurnFailed tf) info.LastFailureReason = tf.Reason;
+                        RaiseRunEvent(runId, evt);
+                    }
 
                 lock (info.OutputBuffer)
                 {
@@ -430,13 +435,18 @@ internal abstract class CliDriverBase : ICliDriver
                 DurationSeconds = duration,
             };
 
-            // A runner-initiated stop is a Killed event; a self-exit is ProcessExited.
-            // This lets a subscriber tell a deliberate stop apart from a crash without
-            // re-deriving it. Either way OnFinished is the canonical "run is done".
-            if (info.StopReason != RunStopReason.None)
-                RaiseRunEvent(runId, new CliRunEvent.Killed(info.StopReason.ToString()) { RunId = runId });
-            else
-                RaiseRunEvent(runId, new CliRunEvent.ProcessExited(exitCode, StatusString(status), duration) { RunId = runId });
+            // One run-terminal event, 3-valued. A subscriber tells a deliberate stop
+            // (Stopped) apart from a crash (Failed) without re-deriving it. Reason fills
+            // for Stopped (the stop reason) and Failed (the last turn-failure, else exit
+            // code). Either way OnFinished is the canonical "run is done".
+            var reason = status switch
+            {
+                RunOutcome.Stopped => info.StopReason.ToString(),
+                RunOutcome.Failed => info.LastFailureReason
+                                     ?? (exitCode is int ec ? $"exit code {ec}" : "process ended without a clean exit"),
+                _ => null,
+            };
+            RaiseRunEvent(runId, new CliRunEvent.RunEnded(status, reason, exitCode, duration) { RunId = runId });
 
             try { OnFinished?.Invoke(runId, info.Execution); }
             catch (Exception ex) { Logger.LogWarning(ex, "OnFinished subscriber threw for {RunId}", runId); }
@@ -454,10 +464,10 @@ internal abstract class CliDriverBase : ICliDriver
         }
     }
 
-    private static string StatusString(RunStatus status) => status switch
+    private static string StatusString(RunOutcome status) => status switch
     {
-        RunStatus.Completed => "completed",
-        RunStatus.Stopped => "stopped",
+        RunOutcome.Completed => "completed",
+        RunOutcome.Stopped => "stopped",
         _ => "failed",
     };
 
@@ -605,6 +615,8 @@ internal abstract class CliDriverBase : ICliDriver
         public CleanContextPreparation? CleanContext { get; set; }
         /// <summary>Why the runner stopped the process; <see cref="RunStopReason.None"/> means it ended on its own.</summary>
         public RunStopReason StopReason { get; set; } = RunStopReason.None;
+        /// <summary>Last <see cref="CliRunEvent.TurnFailed"/> reason seen; fills <see cref="CliRunEvent.RunEnded"/>.Reason on a Failed outcome.</summary>
+        public string? LastFailureReason { get; set; }
         /// <summary>UTC instant of the last real streamed line (the silence-clock input).</summary>
         public DateTime LastStreamedAt { get; set; }
         /// <summary>The stdout reader loop.</summary>

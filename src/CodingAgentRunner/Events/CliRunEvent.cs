@@ -81,11 +81,24 @@ public abstract record CliRunEvent
         string? OverageStatus,
         bool IsUsingOverage) : CliRunEvent;
 
-    /// <summary>The process exited. <see cref="ExitCode"/> is the OS exit code; <see cref="Status"/> is the adapter's best-effort classification (completed / failed / stopped / cancelled). The runner reconciles it with the real exit code and any stop reason.</summary>
-    public sealed record ProcessExited(int? ExitCode, string Status, double DurationSeconds) : CliRunEvent;
-
-    /// <summary>The runner killed the process tree (watchdog timeout, user stop, cancellation).</summary>
-    public sealed record Killed(string Reason) : CliRunEvent;
+    /// <summary>
+    /// The run terminated — the <b>single</b> run-terminal event (it replaces the old
+    /// separate <c>ProcessExited</c> / <c>Killed</c>). Turn-level events
+    /// (<see cref="TurnCompleted"/> / <see cref="TurnFailed"/>) are conversation
+    /// granularity and stay distinct; this is the run boundary.
+    ///
+    /// <para><see cref="Outcome"/> is 3-valued, not binary: <see cref="Model.RunOutcome.Completed"/>
+    /// (clean self-exit), <see cref="Model.RunOutcome.Stopped"/> (a deliberate stop —
+    /// user pause / watchdog — which is NOT an error), or <see cref="Model.RunOutcome.Failed"/>
+    /// (a self-crash / non-zero exit). <see cref="Reason"/> is filled for Stopped (the
+    /// stop reason) and Failed (the last turn-failure detail, else the exit code), and is
+    /// null for Completed.</para>
+    /// </summary>
+    public sealed record RunEnded(
+        Model.RunOutcome Outcome,
+        string? Reason,
+        int? ExitCode,
+        double Duration) : CliRunEvent;
 
     /// <summary>Adapter could not classify a chunk of output. <see cref="Sample"/> is a short prefix of the unclassified payload, capped to 200 chars.</summary>
     public sealed record Unknown(string Sample) : CliRunEvent;

@@ -14,7 +14,7 @@ namespace CodingAgentRunner.Drivers;
 /// <para>
 /// Copilot has no documented stream-json mode, so this driver has no frame
 /// adapter: it raises <see cref="Events.CliRunEvent.RunStarted"/> /
-/// <see cref="Events.CliRunEvent.ProcessExited"/> and streams raw output lines,
+/// <see cref="Events.CliRunEvent.RunEnded"/> and streams raw output lines,
 /// but not the rich typed events the other CLIs emit. Copilot also block-buffers
 /// stdout behind a pipe on Windows; a pseudo-terminal spawn (a future addition)
 /// is needed for live line-by-line output there. Shared-only (no config-home

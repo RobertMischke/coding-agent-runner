@@ -29,8 +29,8 @@ public interface ICliDriver
     /// <summary>
     /// Start a run and consume its typed events as a pull-stream — the single-run
     /// ergonomic alternative to wiring <see cref="OnRunEvent"/> + <see cref="OnFinished"/>.
-    /// The sequence ends after the run's terminal event (<see cref="CliRunEvent.ProcessExited"/>
-    /// or <see cref="CliRunEvent.Killed"/>); a spawn failure surfaces as a thrown exception,
+    /// The sequence ends after the run's terminal event (<see cref="CliRunEvent.RunEnded"/>);
+    /// a spawn failure surfaces as a thrown exception,
     /// and cancelling <paramref name="ct"/> stops the run and ends the enumeration.
     /// For multiplexing many concurrent runs through one handler, use <see cref="OnRunEvent"/>
     /// and route by <c>evt.RunId</c> instead.

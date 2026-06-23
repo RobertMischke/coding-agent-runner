@@ -46,8 +46,7 @@ public static class RunPhaseTransitions
         CliRunEvent.NeedsInput          => RunPhase.NeedsInput,
         CliRunEvent.ApprovalRequested   => RunPhase.NeedsInput,
         CliRunEvent.RateLimitObserved   => current,
-        CliRunEvent.ProcessExited       => RunPhase.Exited,
-        CliRunEvent.Killed              => RunPhase.Killed,
+        CliRunEvent.RunEnded e          => e.Outcome == Model.RunOutcome.Stopped ? RunPhase.Killed : RunPhase.Exited,
         CliRunEvent.Unknown             => current == RunPhase.Spawning ? RunPhase.Unknown : current,
         _                                => current
     };

@@ -84,10 +84,12 @@ public class CliDriverEngineTests
         Assert.Equal(0, final.ExitCode);
         Assert.True(final.DurationSeconds >= 0);
 
-        // Event ordering: RunStarted first, ProcessExited last, a TurnCompleted between.
+        // Event ordering: RunStarted first, RunEnded last, a TurnCompleted between.
         var seq = events.ToArray();
         Assert.IsType<CliRunEvent.RunStarted>(seq[0]);
-        Assert.IsType<CliRunEvent.ProcessExited>(seq[^1]);
+        var end = Assert.IsType<CliRunEvent.RunEnded>(seq[^1]);
+        Assert.Equal(RunOutcome.Completed, end.Outcome);   // clean self-exit
+        Assert.Null(end.Reason);
         Assert.Contains(seq, e => e is CliRunEvent.TurnCompleted);
 
         // The version line was captured.
@@ -115,7 +117,7 @@ public class CliDriverEngineTests
 
         // Same ordering guarantees as the push-event path; the terminal event closes the stream.
         Assert.IsType<CliRunEvent.RunStarted>(seq[0]);
-        Assert.IsType<CliRunEvent.ProcessExited>(seq[^1]);
+        Assert.IsType<CliRunEvent.RunEnded>(seq[^1]);
         Assert.Contains(seq, e => e is CliRunEvent.TurnCompleted);
         Assert.All(seq, e => Assert.Equal("stream-1", e.RunId));   // multiplex filter held
     }
@@ -148,7 +150,7 @@ public class CliDriverEngineTests
     }
 
     [Fact]
-    public async Task Stop_ClassifiesAsStopped_AndRaisesKilled_NotProcessExited()
+    public async Task Stop_ClassifiesAsStopped_AndRaisesRunEnded_WithStoppedOutcome()
     {
         using var logs = new TempLogs();
         // A genuinely long-lived, cross-platform process so we can Stop() it mid-run.
@@ -159,14 +161,12 @@ public class CliDriverEngineTests
 
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var sawKilled = false;
-        var sawProcessExited = false;
+        CliRunEvent.RunEnded? end = null;
         driver.OnStarted += (_, _) => started.TrySetResult();
         driver.OnFinished += (_, r) => finished.TrySetResult(r);
         driver.OnRunEvent += (_, e) =>
         {
-            if (e is CliRunEvent.Killed) sawKilled = true;
-            if (e is CliRunEvent.ProcessExited) sawProcessExited = true;
+            if (e is CliRunEvent.RunEnded re) end = re;
         };
 
         var (run, err) = await driver.StartAsync(new CliRunRequest
@@ -180,13 +180,42 @@ public class CliDriverEngineTests
         var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
         // The deliberate stop is classified as 'stopped' (NOT 'failed' from the -1 kill),
-        // and surfaces as a Killed event rather than ProcessExited.
+        // and surfaces as ONE RunEnded with Outcome=Stopped carrying the reason.
         Assert.Equal("stopped", final.Status);
-        Assert.True(sawKilled, "expected a Killed event for a deliberate stop");
-        Assert.False(sawProcessExited, "a deliberately stopped run must not raise ProcessExited");
+        Assert.NotNull(end);
+        Assert.Equal(RunOutcome.Stopped, end!.Outcome);
+        Assert.Equal(RunStopReason.UserStop.ToString(), end.Reason);
 
         // Stop on an unknown run id returns false.
         Assert.False(driver.Stop("no-such-run"));
+    }
+
+    [Fact]
+    public async Task NonZeroExit_RaisesRunEnded_FailedOutcome_WithExitCodeReason()
+    {
+        using var logs = new TempLogs();
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("cmd", new[] { "/c", "exit 3" })
+            : ("sh", new[] { "-c", "exit 3" });
+        var driver = new ProbeDriver(exe, args, logs);
+
+        CliRunEvent.RunEnded? end = null;
+        var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        driver.OnRunEvent += (_, e) => { if (e is CliRunEvent.RunEnded re) end = re; };
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
+
+        await driver.StartAsync(new CliRunRequest
+        {
+            RunId = "fail", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
+        });
+        var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // Non-zero exit, no stop reason → Failed (a self-crash), with the exit-code fallback reason.
+        Assert.Equal("failed", final.Status);
+        Assert.NotNull(end);
+        Assert.Equal(RunOutcome.Failed, end!.Outcome);
+        Assert.Equal(3, end.ExitCode);
+        Assert.Contains("exit code", end.Reason);
     }
 
     [Fact]
