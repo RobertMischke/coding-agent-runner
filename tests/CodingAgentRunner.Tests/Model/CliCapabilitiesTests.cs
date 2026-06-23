@@ -58,6 +58,20 @@ public class CliCapabilitiesTests
     }
 
     [Fact]
+    public void Capabilities_Null_Model_IsPerCli()
+    {
+        // Claude needs a specific model to know its ladder → null yields none.
+        Assert.Empty(Runner.Claude.Capabilities(null).ThinkingLevels);
+        Assert.Null(Runner.Claude.Capabilities(null).Model);
+        Assert.True(Runner.Claude.Capabilities(null).SupportsResume);   // resume is model-independent
+
+        // Codex treats an unspecified model as base OpenAI → base ladder, default medium.
+        var codex = Runner.Codex.Capabilities(null);
+        Assert.Contains(CliThinkingLevels.High, codex.ThinkingLevels);
+        Assert.Equal(CliThinkingLevels.Medium, codex.DefaultThinkingLevel);
+    }
+
+    [Fact]
     public void Capabilities_TrackTheModel_PerCall()
     {
         // The selector is model-specific: the SAME driver reports different ladders.

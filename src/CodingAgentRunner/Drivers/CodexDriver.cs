@@ -81,6 +81,15 @@ internal sealed class CodexDriver : CliDriverBase
         foreach (var flag in CliReasoningFlags.For(CliType, model, thinkingLevel))
             psi.ArgumentList.Add(flag);
 
+        // CLI-specific tuning: Codex accepts arbitrary `-c key=value` config overrides,
+        // so each Tuning entry becomes one. Unknown keys are Codex's to ignore/accept.
+        if (request.Tuning is { Count: > 0 })
+            foreach (var kv in request.Tuning)
+            {
+                psi.ArgumentList.Add("-c");
+                psi.ArgumentList.Add($"{kv.Key}={kv.Value}");
+            }
+
         var resume = !string.IsNullOrWhiteSpace(request.ResumeSessionId)
                      && CodexUuid.IsMatch(request.ResumeSessionId!);
         if (resume)

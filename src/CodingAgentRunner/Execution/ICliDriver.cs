@@ -78,7 +78,10 @@ public interface ICliDriver
     /// What this CLI + model can do — supported reasoning levels, clean-context and
     /// resume support, and any CLI-specific knobs. Lets a UI render exactly the
     /// controls that apply to the selected CLI/model instead of a generalized set.
-    /// Pass null for the CLI's default model.
+    /// Pass the model id you intend to run; reasoning levels are per-model, so null
+    /// (no model) yields an empty reasoning ladder rather than a guess.
+    /// <para>Pure and total: safe to call with any (or null) model id — an unknown model
+    /// just yields empty capability lists, never an exception.</para>
     /// </summary>
     CliCapabilities Capabilities(string? model);
 

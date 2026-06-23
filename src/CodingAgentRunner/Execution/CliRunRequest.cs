@@ -44,10 +44,11 @@ public sealed record CliRunRequest
 
     /// <summary>
     /// CLI-specific tuning knobs as a forward-compatible string bag. Each driver reads
-    /// only the keys it understands (see <see cref="Model.CliCapabilities.Knobs"/>) and
-    /// ignores the rest — so a new per-CLI knob never changes this type. Null/empty
-    /// means "use the CLI defaults". Reasoning effort is NOT a tuning key; it has its
-    /// own first-class field, <see cref="ThinkingLevel"/>.
+    /// only the keys it understands and ignores the rest — so a new per-CLI knob never
+    /// changes this type. Today <b>Codex</b> applies each entry as a <c>-c key=value</c>
+    /// config override (its native mechanism); the other CLIs ignore the bag until they
+    /// grow a knob. Null/empty means "use the CLI defaults". Reasoning effort is NOT a
+    /// tuning key; it has its own first-class field, <see cref="ThinkingLevel"/>.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Tuning { get; init; }
 }

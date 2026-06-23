@@ -13,14 +13,19 @@ namespace CodingAgentRunner.Events;
 /// It owns the phase state (<see cref="RunPhaseTransitions"/>) and a single internal
 /// timer; per run it advances the phase from the event stream, resets the silence
 /// clock on activity signals, and evaluates the <see cref="WatchdogPolicy"/> on each
-/// tick. With <c>autoStop</c> it stops a hung run itself (reported as
+/// tick. <see cref="OnStateChanged"/> and <see cref="OnHung"/> fire <b>once per
+/// transition</b> (entering Hung fires OnHung exactly once, not every tick). With
+/// <c>autoStop</c> it stops a hung run itself (reported as
 /// <see cref="RunStopReason.Watchdog"/> — a deliberate stop, never a crash); without
-/// it, you just listen to <see cref="OnHung"/> / <see cref="OnStateChanged"/> and
-/// decide. Multiplex-safe: one watchdog covers all of a driver's concurrent runs.
+/// it, you just listen and decide. Multiplex-safe: one watchdog covers all of a
+/// driver's concurrent runs. <b>Dispose to detach</b> (otherwise the timer and the
+/// driver subscriptions live on).
 /// </para>
 /// </summary>
 public sealed class RunWatchdog : IDisposable
 {
+    // Each RunState instance is its own lock: Tick reads its fields while HandleEvent
+    // writes them, so every access is taken under `lock (st)`.
     private sealed class RunState
     {
         public RunPhase Phase = RunPhase.Spawning;
@@ -36,10 +41,10 @@ public sealed class RunWatchdog : IDisposable
     private readonly Timer _timer;
     private int _disposed;
 
-    /// <summary>Raised when a run's <see cref="WatchdogState"/> changes (Healthy → Quiet → Suspicious → Hung).</summary>
+    /// <summary>Raised once when a run's <see cref="WatchdogState"/> changes (Healthy → Quiet → Suspicious → Hung).</summary>
     public event Action<string, RunPhase, WatchdogState>? OnStateChanged;
 
-    /// <summary>Raised each tick a run is <see cref="WatchdogState.Hung"/>: (runId, phase, silenceSeconds).</summary>
+    /// <summary>Raised <b>once</b> when a run first becomes <see cref="WatchdogState.Hung"/>: (runId, phase, silenceSeconds).</summary>
     public event Action<string, RunPhase, double>? OnHung;
 
     private RunWatchdog(ICliDriver driver, WatchdogPolicy policy, bool autoStop)
@@ -64,7 +69,11 @@ public sealed class RunWatchdog : IDisposable
         => new(driver, policy ?? WatchdogPolicy.Default, autoStop);
 
     /// <summary>The current phase the watchdog believes <paramref name="runId"/> is in, or null when untracked.</summary>
-    public RunPhase? PhaseOf(string runId) => _runs.TryGetValue(runId, out var s) ? s.Phase : null;
+    public RunPhase? PhaseOf(string runId)
+    {
+        if (!_runs.TryGetValue(runId, out var st)) return null;
+        lock (st) return st.Phase;
+    }
 
     private void HandleStarted(string runId, CliRunInfo info)
     {
@@ -80,9 +89,12 @@ public sealed class RunWatchdog : IDisposable
     private void HandleEvent(string runId, CliRunEvent evt)
     {
         if (!_runs.TryGetValue(runId, out var st)) return;
-        st.Phase = RunPhaseTransitions.Apply(st.Phase, evt);
-        if (RunPhaseTransitions.IsActivitySignal(evt))
-            st.LastActivity = DateTime.UtcNow;
+        lock (st)
+        {
+            st.Phase = RunPhaseTransitions.Apply(st.Phase, evt);
+            if (RunPhaseTransitions.IsActivitySignal(evt))
+                st.LastActivity = DateTime.UtcNow;
+        }
     }
 
     private void HandleFinished(string runId, CliRunInfo info) => _runs.TryRemove(runId, out _);
@@ -93,20 +105,29 @@ public sealed class RunWatchdog : IDisposable
         var now = DateTime.UtcNow;
         foreach (var (runId, st) in _runs)
         {
-            var silence = (now - st.LastActivity).TotalSeconds;
-            var age = (now - st.StartedAt).TotalSeconds;
-            var state = _policy.Decide(st.Phase, silence, age);
-
-            if (state != st.Last)
+            // Snapshot + transition test under the run's lock so an overlapping tick or a
+            // concurrent HandleEvent cannot tear the read or double-fire the transition.
+            RunPhase phase;
+            double silence;
+            WatchdogState state;
+            bool transitioned;
+            lock (st)
             {
-                st.Last = state;
-                OnStateChanged?.Invoke(runId, st.Phase, state);
+                phase = st.Phase;
+                silence = (now - st.LastActivity).TotalSeconds;
+                var age = (now - st.StartedAt).TotalSeconds;
+                state = _policy.Decide(phase, silence, age);
+                transitioned = state != st.Last;
+                if (transitioned) st.Last = state;
             }
+            if (!transitioned) continue;                       // act ONLY on a state change
 
+            OnStateChanged?.Invoke(runId, phase, state);       // callbacks outside the lock
             if (state == WatchdogState.Hung)
             {
-                OnHung?.Invoke(runId, st.Phase, silence);
-                if (_autoStop) _driver.Stop(runId, RunStopReason.Watchdog);
+                OnHung?.Invoke(runId, phase, silence);         // one-shot: only on entering Hung
+                if (_autoStop && _runs.ContainsKey(runId))
+                    _driver.Stop(runId, RunStopReason.Watchdog);
             }
         }
     }
@@ -115,10 +136,10 @@ public sealed class RunWatchdog : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _timer.Dispose();                                      // stop new ticks BEFORE detaching
         _driver.OnStarted -= HandleStarted;
         _driver.OnRunEvent -= HandleEvent;
         _driver.OnFinished -= HandleFinished;
-        _timer.Dispose();
         _runs.Clear();
     }
 }

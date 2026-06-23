@@ -203,27 +203,36 @@ public sealed class QuotaService
         if (string.IsNullOrWhiteSpace(cli)) return false;
 
         var prior = GetCachedFor(cli);
+        var label = rl.Window ?? "rate-limit";
         DateTime? reset = rl.ResetsAt > 0
             ? DateTimeOffset.FromUnixTimeSeconds(rl.ResetsAt).UtcDateTime
-            : prior?.Windows.FirstOrDefault()?.ResetAt;
+            : (DateTime?)null;
 
-        // No precise percent in the event: overage = at/over the base limit (100%);
-        // otherwise preserve whatever usage we already knew.
-        double? usedPct = rl.IsUsingOverage
-            ? 100d
-            : prior?.MaxUsedPct is > 0 ? prior!.MaxUsedPct : null;
+        // MERGE by window label — never discard the prior snapshot's other windows, and
+        // never LOWER a usage a probe already established (the event has no precise
+        // percent). Overage means we are at/over the base limit for THIS window (100%);
+        // a non-overage event only refreshes the reset time.
+        var windows = prior?.Windows is { Count: > 0 } p ? new List<QuotaWindow>(p) : new List<QuotaWindow>();
+        var idx = windows.FindIndex(w => string.Equals(w.Label, label, StringComparison.OrdinalIgnoreCase));
+        var existing = idx >= 0 ? windows[idx] : null;
+        var merged = new QuotaWindow
+        {
+            Label = label,
+            UsedPct = rl.IsUsingOverage ? 100d : existing?.UsedPct,   // overage→100; else keep prior, invent nothing
+            Used = existing?.Used,
+            Limit = existing?.Limit,
+            Unit = existing?.Unit,
+            ResetAt = reset ?? existing?.ResetAt,
+            ResetLabel = existing?.ResetLabel,
+        };
+        if (idx >= 0) windows[idx] = merged; else windows.Add(merged);
 
         _cache[cli] = new QuotaSnapshot
         {
             CliType = cli,
             FetchedAt = DateTime.UtcNow,
             Plan = prior?.Plan,
-            Windows = [new QuotaWindow
-            {
-                Label = rl.Window ?? prior?.Windows.FirstOrDefault()?.Label ?? "rate-limit",
-                UsedPct = usedPct,
-                ResetAt = reset,
-            }],
+            Windows = windows,
             Source = "event",
             RawSample = $"status={rl.Status}; overage={rl.OverageStatus}; usingOverage={rl.IsUsingOverage}",
         };

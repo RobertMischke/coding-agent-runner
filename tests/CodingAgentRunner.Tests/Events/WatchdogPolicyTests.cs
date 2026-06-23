@@ -48,6 +48,13 @@ public class WatchdogPolicyTests
     }
 
     [Fact]
+    public void DefaultBudgets_CoverEveryRunPhase()   // a new RunPhase must get its own explicit budget
+    {
+        foreach (RunPhase phase in System.Enum.GetValues<RunPhase>())
+            Assert.True(WatchdogPolicy.Default.Budgets.ContainsKey(phase), $"missing budget for {phase}");
+    }
+
+    [Fact]
     public void UnlistedPhase_FallsBackToAConservativeBudget()
     {
         var p = WatchdogPolicy.Default with { Budgets = new Dictionary<RunPhase, PhaseBudget>() };  // fallback (60, 180)

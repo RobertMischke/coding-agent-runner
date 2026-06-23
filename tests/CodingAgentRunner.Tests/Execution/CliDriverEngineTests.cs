@@ -237,8 +237,8 @@ public class CliDriverEngineTests
         };
         using var watchdog = RunWatchdog.Attach(driver, policy, autoStop: true);
 
-        var sawHung = false;
-        watchdog.OnHung += (_, _, _) => sawHung = true;
+        var hungCount = 0;
+        watchdog.OnHung += (_, _, _) => Interlocked.Increment(ref hungCount);
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
         driver.OnFinished += (_, r) => finished.TrySetResult(r);
 
@@ -249,7 +249,7 @@ public class CliDriverEngineTests
 
         var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(25));
 
-        Assert.True(sawHung, "watchdog should have reported the run hung");
+        Assert.Equal(1, hungCount);              // one-shot: OnHung fires exactly once on entering Hung
         Assert.Equal("stopped", final.Status);   // deliberate watchdog stop, classified as stopped (not a crash)
     }
 

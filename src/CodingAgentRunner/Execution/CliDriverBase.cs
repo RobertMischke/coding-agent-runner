@@ -147,6 +147,7 @@ internal abstract class CliDriverBase : ICliDriver
         finally
         {
             OnRunEvent -= Funnel;
+            channel.Writer.TryComplete();        // on an early break the channel state matches reality
             if (ct.IsCancellationRequested) Stop(runId, RunStopReason.UserStop);
         }
     }

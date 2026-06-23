@@ -80,6 +80,21 @@ public class CliDriverArgvTests
     }
 
     [Fact]
+    public void Codex_Tuning_BecomesConfigOverrides()
+    {
+        var psi = new CodexDriver().BuildStartInfoForTest(new CliRunRequest
+        {
+            RunId = "r",
+            Prompt = "p",
+            WorkingDirectory = Path.GetTempPath(),
+            Tuning = new Dictionary<string, string> { ["model_reasoning_summary"] = "concise" },
+        });
+        var args = psi.ArgumentList;
+        Assert.Contains("-c", args);
+        Assert.Contains("model_reasoning_summary=concise", args);
+    }
+
+    [Fact]
     public void Gemini_UsesStreamJson_AndAlwaysSkipsTrust()
     {
         var psi = new GeminiDriver().BuildStartInfoForTest(Req());
