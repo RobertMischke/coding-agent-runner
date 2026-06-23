@@ -190,6 +190,41 @@ public class CliDriverEngineTests
     }
 
     [Fact]
+    public async Task RunWatchdog_AutoStops_AHungRun()
+    {
+        using var logs = new TempLogs();
+        // A silent, long-lived process: no stdout → no activity → stays in Spawning.
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("powershell", new[] { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" })
+            : ("sleep", new[] { "30" });
+        var driver = new ProbeDriver(exe, args, logs);
+
+        // Aggressive policy: no warm-up, hung after 2s of Spawning silence, tick every 1s.
+        var policy = WatchdogPolicy.Default with
+        {
+            WarmUpGraceSeconds = 0,
+            TickSeconds = 1,
+            Budgets = new Dictionary<RunPhase, PhaseBudget> { [RunPhase.Spawning] = new(1, 2) },
+        };
+        using var watchdog = RunWatchdog.Attach(driver, policy, autoStop: true);
+
+        var sawHung = false;
+        watchdog.OnHung += (_, _, _) => sawHung = true;
+        var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
+
+        await driver.StartAsync(new CliRunRequest
+        {
+            RunId = "wd", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
+        });
+
+        var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(25));
+
+        Assert.True(sawHung, "watchdog should have reported the run hung");
+        Assert.Equal("stopped", final.Status);   // deliberate watchdog stop, classified as stopped (not a crash)
+    }
+
+    [Fact]
     public async Task Forget_EvictsInMemory_GetOutputThenFallsBackToDisk()
     {
         using var logs = new TempLogs();
