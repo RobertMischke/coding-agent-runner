@@ -33,6 +33,8 @@ internal abstract class CliDriverBase : ICliDriver
     // Per-run tracking, keyed by CliRunRequest.RunId. Private: the contract is
     // expressed entirely through ICliDriver's events + GetExecution/GetOutput.
     private readonly ConcurrentDictionary<string, ProcInfo> _processes = new();
+    // Run ids with an active StreamAsync pull-stream — one per run (push events still multiplex).
+    private readonly ConcurrentDictionary<string, byte> _streaming = new();
 
     /// <summary>Consumer configuration (paths, git-guard, hardening).</summary>
     protected CliOptions Options { get; }
@@ -123,6 +125,13 @@ internal abstract class CliDriverBase : ICliDriver
         // funnels THIS run's events into an unbounded channel, then yield them. The
         // run's terminal event (RunEnded) completes the channel.
         var runId = request.RunId;
+
+        // One pull-stream per run id — a second concurrent StreamAsync of the same run
+        // would double-consume its events. Reject it (push events still multiplex freely).
+        if (!_streaming.TryAdd(runId, 0))
+            throw new InvalidOperationException(
+                $"A StreamAsync is already active for run '{runId}'. Use OnRunEvent to fan out to multiple consumers.");
+
         var channel = Channel.CreateUnbounded<CliRunEvent>(
             new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
 
@@ -148,6 +157,7 @@ internal abstract class CliDriverBase : ICliDriver
         {
             OnRunEvent -= Funnel;
             channel.Writer.TryComplete();        // on an early break the channel state matches reality
+            _streaming.TryRemove(runId, out _);
             if (ct.IsCancellationRequested) Stop(runId, RunStopReason.UserStop);
         }
     }

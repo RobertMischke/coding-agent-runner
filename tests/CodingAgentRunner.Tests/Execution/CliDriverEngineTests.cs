@@ -123,6 +123,70 @@ public class CliDriverEngineTests
     }
 
     [Fact]
+    public async Task StreamAsync_SpawnError_SurfacesAsThrow()
+    {
+        using var logs = new TempLogs();
+        var driver = new ProbeDriver("definitely-not-a-real-binary-xyz123", [], logs);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        await Assert.ThrowsAnyAsync<Exception>(async () =>
+        {
+            await foreach (var _ in driver.StreamAsync(new CliRunRequest
+            { RunId = "se", Prompt = "x", WorkingDirectory = Path.GetTempPath() }, cts.Token)) { }
+        });
+    }
+
+    [Fact]
+    public async Task StreamAsync_SecondConcurrentSameRunId_Throws()
+    {
+        using var logs = new TempLogs();
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("powershell", new[] { "-NoProfile", "-Command", "Start-Sleep -Seconds 10" })
+            : ("sleep", new[] { "10" });
+        var driver = new ProbeDriver(exe, args, logs);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+
+        var first = driver.StreamAsync(new CliRunRequest
+        { RunId = "dup", Prompt = "x", WorkingDirectory = Path.GetTempPath() }, cts.Token).GetAsyncEnumerator(cts.Token);
+        Assert.True(await first.MoveNextAsync());   // RunStarted → the stream is now active
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await foreach (var _ in driver.StreamAsync(new CliRunRequest
+            { RunId = "dup", Prompt = "y", WorkingDirectory = Path.GetTempPath() }, cts.Token)) { }
+        });
+
+        await first.DisposeAsync();   // release the first stream's tracking
+        driver.Stop("dup");
+    }
+
+    [Fact]
+    public async Task StreamAsync_Cancellation_StopsTheRun_AndEndsEnumeration()
+    {
+        using var logs = new TempLogs();
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("powershell", new[] { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" })
+            : ("sleep", new[] { "30" });
+        var driver = new ProbeDriver(exe, args, logs);
+        using var cts = new CancellationTokenSource();
+
+        var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var e in driver.StreamAsync(new CliRunRequest
+            { RunId = "cx", Prompt = "x", WorkingDirectory = Path.GetTempPath() }, cts.Token))
+            {
+                if (e is CliRunEvent.RunStarted) cts.Cancel();   // cancel right after the run starts
+            }
+        });
+
+        var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        Assert.Equal("stopped", final.Status);   // cancellation stopped the run (finally → Stop)
+    }
+
+    [Fact]
     public async Task DuplicateRunId_WhileLive_IsRejected_ButReusableAfterExit()
     {
         using var logs = new TempLogs();

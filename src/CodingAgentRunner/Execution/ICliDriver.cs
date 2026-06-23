@@ -34,6 +34,9 @@ public interface ICliDriver
     /// and cancelling <paramref name="ct"/> stops the run and ends the enumeration.
     /// For multiplexing many concurrent runs through one handler, use <see cref="OnRunEvent"/>
     /// and route by <c>evt.RunId</c> instead.
+    /// <para>Single-consumer: only one <c>StreamAsync</c> may be active per run id at a time
+    /// (a second concurrent one throws). The buffer is unbounded, so consume promptly — a
+    /// stalled <c>await foreach</c> on a high-volume run lets events accumulate in memory.</para>
     /// </summary>
     IAsyncEnumerable<CliRunEvent> StreamAsync(CliRunRequest request, CancellationToken ct = default);
 
