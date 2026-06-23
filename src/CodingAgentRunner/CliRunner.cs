@@ -49,7 +49,11 @@ public sealed class CliRunner
     public ICliDriver Claude => Get(CliTypes.Claude);
     /// <summary>The OpenAI Codex driver. Sugar for <c>Get(CliTypes.Codex)</c>.</summary>
     public ICliDriver Codex => Get(CliTypes.Codex);
-    /// <summary>The Google Gemini driver. Sugar for <c>Get(CliTypes.Gemini)</c>.</summary>
+    /// <summary>
+    /// The Google Gemini driver. Sugar for <c>Get(CliTypes.Gemini)</c>.
+    /// <para><b>Deprecated</b> — unused and unmaintained. <b>Antigravity</b> (Google's
+    /// agentic CLI) is the planned Google integration that supersedes it.</para>
+    /// </summary>
     public ICliDriver Gemini => Get(CliTypes.Gemini);
     /// <summary>The GitHub Copilot driver. Sugar for <c>Get(CliTypes.Copilot)</c>.</summary>
     public ICliDriver Copilot => Get(CliTypes.Copilot);

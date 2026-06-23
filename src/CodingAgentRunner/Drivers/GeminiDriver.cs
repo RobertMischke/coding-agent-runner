@@ -16,6 +16,10 @@ namespace CodingAgentRunner.Drivers;
 ///
 /// <para>Gemini exposes no config-home redirect, so it is shared-only
 /// (<c>SupportsCleanContext</c> is false).</para>
+///
+/// <para><b>Deprecated &amp; unmaintained.</b> The standalone Gemini CLI is unused;
+/// the planned Google integration is <b>Antigravity</b> (Google's agentic CLI), which
+/// will supersede this driver. It stays in place for now but receives no new work.</para>
 /// </summary>
 internal sealed class GeminiDriver : CliDriverBase
 {

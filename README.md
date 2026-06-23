@@ -26,7 +26,9 @@ See [docs/why-windows-hardening.md](docs/why-windows-hardening.md) for the full 
 
 ## Supported agents
 
-Claude Code · OpenAI Codex · GitHub Copilot CLI · Gemini CLI. The library targets these four CLIs in their specific versions — it is purpose-built for them, not a generic "wrap any CLI" framework.
+Claude Code · OpenAI Codex · GitHub Copilot CLI · ~~Gemini CLI~~. The library targets these CLIs in their specific versions — it is purpose-built for them, not a generic "wrap any CLI" framework.
+
+> **Gemini is deprecated** — unused and unmaintained. Its driver stays in place but receives no new work. **Antigravity** (Google's agentic CLI) is the planned Google integration that supersedes it.
 
 ## Features
 
