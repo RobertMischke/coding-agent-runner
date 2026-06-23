@@ -74,6 +74,14 @@ public interface ICliDriver
     /// <summary>Whether this driver can isolate its persistent state for a clean run.</summary>
     bool SupportsCleanContext { get; }
 
+    /// <summary>
+    /// What this CLI + model can do — supported reasoning levels, clean-context and
+    /// resume support, and any CLI-specific knobs. Lets a UI render exactly the
+    /// controls that apply to the selected CLI/model instead of a generalized set.
+    /// Pass null for the CLI's default model.
+    /// </summary>
+    CliCapabilities Capabilities(string? model);
+
     /// <summary>Raw output lines as they stream (one per stdout/stderr/system line).</summary>
     event Action<string, CliOutputLine>? OnOutput;
 

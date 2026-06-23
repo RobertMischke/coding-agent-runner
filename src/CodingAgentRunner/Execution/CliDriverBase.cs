@@ -71,6 +71,31 @@ internal abstract class CliDriverBase : ICliDriver
     /// <summary>Create a clean per-run config home, or null when unsupported / impossible.</summary>
     public virtual CleanContextPreparation? PrepareCleanContext(string workingDirectory) => null;
 
+    /// <summary>Whether this CLI can resume a session via <see cref="CliRunRequest.ResumeSessionId"/>.</summary>
+    protected virtual bool SupportsResume => false;
+
+    /// <summary>
+    /// CLI-specific knobs beyond reasoning, advertised through <see cref="Capabilities"/>.
+    /// Empty for every built-in CLI; a driver overrides this when it grows a real knob.
+    /// </summary>
+    protected virtual IReadOnlyDictionary<string, IReadOnlyList<string>> DescribeKnobs(string? model)
+        => EmptyKnobs;
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> EmptyKnobs
+        = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <inheritdoc />
+    public virtual CliCapabilities Capabilities(string? model) => new()
+    {
+        CliType = CliType,
+        Model = string.IsNullOrWhiteSpace(model) ? null : model.Trim(),
+        ThinkingLevels = CliThinkingLevels.For(CliType, model),
+        DefaultThinkingLevel = CliThinkingLevels.DefaultFor(CliType, model),
+        SupportsCleanContext = SupportsCleanContext,
+        SupportsResume = SupportsResume,
+        Knobs = DescribeKnobs(model),
+    };
+
     // ── Events ──────────────────────────────────────────────────────────
 
     /// <inheritdoc />

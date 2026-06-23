@@ -48,6 +48,9 @@ internal sealed class CodexDriver : CliDriverBase
     /// <inheritdoc />
     public override bool SupportsCleanContext => true;
 
+    /// <summary>Codex resumes a session via <c>exec resume &lt;uuid&gt;</c>.</summary>
+    protected override bool SupportsResume => true;
+
     /// <inheritdoc />
     public override CleanContextPreparation? PrepareCleanContext(string workingDirectory)
         => CleanContextPreparer.PrepareCodex(Home.GetUserHome(), Logger);

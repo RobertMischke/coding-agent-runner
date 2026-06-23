@@ -42,6 +42,9 @@ internal sealed class ClaudeDriver : CliDriverBase
     /// <inheritdoc />
     public override bool SupportsCleanContext => true;
 
+    /// <summary>Claude resumes a session via <c>-r &lt;sessionId&gt;</c>.</summary>
+    protected override bool SupportsResume => true;
+
     /// <inheritdoc />
     public override CleanContextPreparation? PrepareCleanContext(string workingDirectory)
         => CleanContextPreparer.PrepareClaude(Home.GetUserHome(), Logger);

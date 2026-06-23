@@ -41,4 +41,13 @@ public sealed record CliRunRequest
 
     /// <summary>Extra environment variables for this run, applied after the standard hardening.</summary>
     public IReadOnlyDictionary<string, string>? ExtraEnvironment { get; init; }
+
+    /// <summary>
+    /// CLI-specific tuning knobs as a forward-compatible string bag. Each driver reads
+    /// only the keys it understands (see <see cref="Model.CliCapabilities.Knobs"/>) and
+    /// ignores the rest — so a new per-CLI knob never changes this type. Null/empty
+    /// means "use the CLI defaults". Reasoning effort is NOT a tuning key; it has its
+    /// own first-class field, <see cref="ThinkingLevel"/>.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Tuning { get; init; }
 }
