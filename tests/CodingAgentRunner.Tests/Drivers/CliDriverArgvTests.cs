@@ -105,6 +105,23 @@ public class CliDriverArgvTests
     }
 
     [Fact]
+    public void Antigravity_NewConversationWithModel_AndResumeViaSendMessage()
+    {
+        // New conversation: new-conversation --model=<tier> "<prompt>"
+        var fresh = new AntigravityDriver().BuildStartInfoForTest(Req(model: "gemini-pro"));
+        Assert.Equal("new-conversation", fresh.ArgumentList[0]);
+        Assert.Contains("--model=pro", fresh.ArgumentList);              // pro tier mapped
+        Assert.Equal("line one\nline two", fresh.ArgumentList[^1]);      // prompt is the last positional
+
+        // Resume: send-message <uuid> "<prompt>"
+        var resumed = new AntigravityDriver().BuildStartInfoForTest(
+            Req(session: "12345678-1234-1234-1234-123456789abc", resume: true));
+        Assert.Equal("send-message", resumed.ArgumentList[0]);
+        Assert.Contains("12345678-1234-1234-1234-123456789abc", resumed.ArgumentList);
+        Assert.DoesNotContain("new-conversation", resumed.ArgumentList);
+    }
+
+    [Fact]
     public void Copilot_AllowAll_AndPrompt()
     {
         var psi = new CopilotDriver().BuildStartInfoForTest(Req());

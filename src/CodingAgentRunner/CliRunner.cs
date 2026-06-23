@@ -36,10 +36,11 @@ public sealed class CliRunner
     {
         _drivers = new Dictionary<string, ICliDriver>(StringComparer.OrdinalIgnoreCase)
         {
-            [CliTypes.Claude]  = new ClaudeDriver(options, logger, logPaths, home),
-            [CliTypes.Codex]   = new CodexDriver(options, logger, logPaths, home),
-            [CliTypes.Gemini]  = new GeminiDriver(options, logger, logPaths, home),
-            [CliTypes.Copilot] = new CopilotDriver(options, logger, logPaths, home),
+            [CliTypes.Claude]      = new ClaudeDriver(options, logger, logPaths, home),
+            [CliTypes.Codex]       = new CodexDriver(options, logger, logPaths, home),
+            [CliTypes.Gemini]      = new GeminiDriver(options, logger, logPaths, home),
+            [CliTypes.Copilot]     = new CopilotDriver(options, logger, logPaths, home),
+            [CliTypes.Antigravity] = new AntigravityDriver(options, logger, logPaths, home),
         };
     }
 
@@ -57,6 +58,8 @@ public sealed class CliRunner
     public ICliDriver Gemini => Get(CliTypes.Gemini);
     /// <summary>The GitHub Copilot driver. Sugar for <c>Get(CliTypes.Copilot)</c>.</summary>
     public ICliDriver Copilot => Get(CliTypes.Copilot);
+    /// <summary>The Google Antigravity (agentapi) driver. Sugar for <c>Get(CliTypes.Antigravity)</c>.</summary>
+    public ICliDriver Antigravity => Get(CliTypes.Antigravity);
 
     /// <summary>The drivers, one per supported CLI.</summary>
     public IReadOnlyCollection<ICliDriver> Drivers => _drivers.Values;

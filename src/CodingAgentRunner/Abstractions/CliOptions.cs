@@ -19,6 +19,9 @@ public sealed record CliOptions
     /// <summary>Explicit path/command for the Gemini CLI.</summary>
     public string? GeminiPath { get; init; }
 
+    /// <summary>Explicit path/command for the Antigravity CLI (default: <c>agentapi</c> on PATH).</summary>
+    public string? AntigravityPath { get; init; }
+
     /// <summary>Extra environment variables applied to every spawned CLI process.</summary>
     public IReadOnlyDictionary<string, string>? EnvironmentOverrides { get; init; }
 

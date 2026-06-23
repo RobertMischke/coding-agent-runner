@@ -15,6 +15,7 @@ public class CliRunnerTests
         Assert.IsType<CodexDriver>(runner.Get("codex"));
         Assert.IsType<GeminiDriver>(runner.Get("gemini"));
         Assert.IsType<CopilotDriver>(runner.Get("copilot"));
+        Assert.IsType<AntigravityDriver>(runner.Get("antigravity"));
     }
 
     [Fact]
@@ -32,6 +33,7 @@ public class CliRunnerTests
         Assert.Equal(CliTypes.Codex, runner.Codex.CliType);
         Assert.Equal(CliTypes.Gemini, runner.Gemini.CliType);
         Assert.Equal(CliTypes.Copilot, runner.Copilot.CliType);
+        Assert.Equal(CliTypes.Antigravity, runner.Antigravity.CliType);
     }
 
     [Fact]
@@ -52,9 +54,9 @@ public class CliRunnerTests
     }
 
     [Fact]
-    public void Drivers_CoverAllFour()
+    public void Drivers_CoverEverySupportedCli()
     {
         var runner = new CliRunner();
-        Assert.Equal(4, runner.Drivers.Count);
+        Assert.Equal(5, runner.Drivers.Count);   // claude, codex, gemini, copilot, antigravity
     }
 }

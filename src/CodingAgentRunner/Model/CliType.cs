@@ -12,8 +12,15 @@ public static class CliTypes
     public const string Claude  = "claude";
     /// <summary>OpenAI Codex CLI.</summary>
     public const string Codex   = "codex";
-    /// <summary>Google Gemini CLI.</summary>
+    /// <summary>Google Gemini CLI. <b>Deprecated</b> — superseded by <see cref="Antigravity"/>.</summary>
     public const string Gemini  = "gemini";
+
+    /// <summary>
+    /// Google Antigravity CLI (<c>agentapi</c>) — the maintained Google integration.
+    /// Registered as a driver, but deliberately <b>not yet in <see cref="All"/></b>
+    /// (kept out of the selectable set until the consumer migrates onto it).
+    /// </summary>
+    public const string Antigravity = "antigravity";
 
     /// <summary>
     /// Sentinel for "no automated CLI resolver" (e.g. a router fallback that needs
