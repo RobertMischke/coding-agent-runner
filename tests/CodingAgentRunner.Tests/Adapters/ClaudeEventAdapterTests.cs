@@ -108,4 +108,21 @@ public class ClaudeEventAdapterTests
         var evt = Assert.Single(Map("""{"type":"some_new_frame","x":1}"""));
         Assert.Contains("some_new_frame", Assert.IsType<CliRunEvent.Unknown>(evt).Sample);
     }
+
+    [Theory]
+    [InlineData("""{"type":123}""")]                                      // numeric type (would throw on a naive GetString)
+    [InlineData("""{"type":null}""")]                                     // null type
+    [InlineData("""{"type":"assistant"}""")]                             // missing message
+    [InlineData("""{"type":"assistant","message":{}}""")]               // missing content
+    [InlineData("""{"type":"assistant","message":{"content":"notarray"}}""")] // content not an array
+    [InlineData("""{"type":"user","message":{"content":[{"type":"tool_result"}]}}""")] // tool_result no content
+    [InlineData("""{"type":"result"}""")]                                // result with no fields
+    [InlineData("""{"no_type":true}""")]                                 // no type at all
+    [InlineData("""{ broken json""")]                                    // not parseable
+    [InlineData("")]                                                      // empty
+    public void Map_NeverThrows_OnMalformedOrUnexpectedInput(string line)
+    {
+        var ex = Record.Exception(() => ClaudeEventAdapter.Map(line, "r").ToList());
+        Assert.Null(ex);
+    }
 }

@@ -15,7 +15,12 @@ namespace CodingAgentRunner;
 /// var runner = new CliRunner(new CliOptions());
 /// var backend = runner.Get("claude");
 /// backend.OnRunEvent += (runId, evt) => /* drive a watchdog / UI */;
-/// var (run, error) = await backend.StartAsync(new CliRunRequest { ... });
+/// var (run, error) = await backend.StartAsync(new CliRunRequest
+/// {
+///     RunId = "run-1",
+///     Prompt = "Refactor the parser",
+///     WorkingDirectory = @"C:\repo",
+/// });
 /// </code>
 /// </summary>
 public sealed class CliRunner

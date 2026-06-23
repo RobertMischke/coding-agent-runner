@@ -102,6 +102,10 @@ public sealed class CodexBackend : CliBackendBase
     protected override IEnumerable<CliRunEvent> MapLineToRunEvents(string runId, CliOutputLine line)
         => line.Stream == "stdout" ? CodexEventAdapter.Map(line.Text, runId) : Array.Empty<CliRunEvent>();
 
+    /// <summary>Codex resumes only a session UUID; a slug from another CLI is rejected.</summary>
+    public override bool IsCompatibleSessionName(string? sessionName)
+        => !string.IsNullOrWhiteSpace(sessionName) && CodexUuid.IsMatch(sessionName);
+
     private string SafeResolve(string path)
     {
         try { return BinaryResolver.ResolveExecutable(path); }

@@ -19,13 +19,20 @@ namespace CodingAgentRunner.Quota;
 /// </list>
 /// Probing is expensive, so callers should rely on the cache and only force-refresh
 /// on explicit intent.
+/// <para>
+/// <b>Thread-safe.</b> All members are safe to call concurrently from multiple
+/// threads; refreshes are coalesced per CLI type. The returned <see cref="QuotaReport"/>
+/// and <see cref="QuotaSnapshot"/> are immutable snapshots, safe to read without locks.
+/// </para>
 /// </summary>
 public sealed class QuotaService
 {
     private readonly ILogger _logger;
     private readonly IReadOnlyDictionary<string, IQuotaProbe> _probes;
     private readonly ConcurrentDictionary<string, QuotaSnapshot> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
+    // In-flight probe per CLI. Lazy guarantees the probe body runs exactly once even
+    // under a GetOrAdd race; every concurrent caller awaits the same task.
+    private readonly ConcurrentDictionary<string, Lazy<Task<QuotaSnapshot?>>> _inflight = new(StringComparer.OrdinalIgnoreCase);
     private readonly QuotaCacheOptions _options;
     private readonly IQuotaCacheStore? _store;
 
@@ -103,23 +110,24 @@ public sealed class QuotaService
     }
 
     /// <summary>
-    /// Re-probe one CLI, replacing its cached snapshot. Coalesced: if a probe for
-    /// this CLI is already running, returns the current cached value instead of
-    /// starting a second one.
+    /// Re-probe one CLI, replacing its cached snapshot. Coalesced: concurrent callers
+    /// for the same CLI share ONE probe and all await its result (so a first probe is
+    /// never duplicated, and a coalesced caller gets the fresh value rather than a
+    /// stale cache). The shared probe is bounded by <see cref="QuotaCacheOptions.ProbeTimeout"/>;
+    /// a single caller's <paramref name="ct"/> does not cancel the shared probe.
     /// </summary>
-    public async Task<QuotaSnapshot?> RefreshAsync(string cliType, CancellationToken ct = default)
+    public Task<QuotaSnapshot?> RefreshAsync(string cliType, CancellationToken ct = default)
     {
-        if (!_probes.TryGetValue(cliType, out var probe)) return null;
-        var sem = _locks.GetOrAdd(cliType, _ => new SemaphoreSlim(1, 1));
-        if (!await sem.WaitAsync(0, ct).ConfigureAwait(false))
-        {
-            _cache.TryGetValue(cliType, out var existing);
-            return existing;
-        }
+        if (!_probes.TryGetValue(cliType, out var probe)) return Task.FromResult<QuotaSnapshot?>(null);
+        return _inflight.GetOrAdd(cliType,
+            key => new Lazy<Task<QuotaSnapshot?>>(() => RunProbeAsync(key, probe))).Value;
+    }
+
+    private async Task<QuotaSnapshot?> RunProbeAsync(string cliType, IQuotaProbe probe)
+    {
         try
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(_options.ProbeTimeout);
+            using var cts = new CancellationTokenSource(_options.ProbeTimeout);
             var snap = await probe.ProbeAsync(cts.Token).ConfigureAwait(false);
             _cache[cliType] = snap;
             PersistCache();
@@ -133,7 +141,7 @@ public sealed class QuotaService
             PersistCache();
             return snap;
         }
-        finally { sem.Release(); }
+        finally { _inflight.TryRemove(cliType, out _); }
     }
 
     private void PersistCache()

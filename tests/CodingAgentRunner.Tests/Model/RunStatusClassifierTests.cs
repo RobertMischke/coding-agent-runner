@@ -17,6 +17,10 @@ public class RunStatusClassifierTests
     [InlineData(-1, RunStopReason.Watchdog, RunStatus.Stopped)]
     [InlineData(1, RunStopReason.Cancelled, RunStatus.Stopped)]
     [InlineData(0, RunStopReason.QuotaCapExceeded, RunStatus.Stopped)]
+    // ...except the two "the work is done, only a lingering process was killed" reasons,
+    // which map to Completed even with a non-zero kill-induced exit code.
+    [InlineData(-1, RunStopReason.SentinelDetected, RunStatus.Completed)]
+    [InlineData(-1, RunStopReason.SilentCompletion, RunStatus.Completed)]
     public void Classify_DistinguishesStoppedFromCompletedAndFailed(
         int? exitCode, RunStopReason reason, RunStatus expected)
     {

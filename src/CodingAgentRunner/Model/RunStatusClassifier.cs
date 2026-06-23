@@ -15,6 +15,11 @@ public static class RunStatusClassifier
     /// <summary>Classify a finished run. A null <paramref name="exitCode"/> is treated as non-clean.</summary>
     public static RunStatus Classify(int? exitCode, RunStopReason stopReason)
     {
+        // These two reasons mean the agent finished its work and only a lingering
+        // process was killed — the work is done, so the run COMPLETED even though a
+        // stop reason was set and the kill-induced exit code is non-zero.
+        if (stopReason is RunStopReason.SentinelDetected or RunStopReason.SilentCompletion)
+            return RunStatus.Completed;
         if (stopReason != RunStopReason.None) return RunStatus.Stopped;
         return exitCode == 0 ? RunStatus.Completed : RunStatus.Failed;
     }

@@ -1,3 +1,4 @@
+using System.Linq;
 using CodingAgentRunner.Quota;
 using Xunit;
 
@@ -5,6 +6,28 @@ namespace CodingAgentRunner.Tests.Quota;
 
 public class QuotaServiceTests
 {
+    [Fact]
+    public async Task RefreshAsync_CoalescesConcurrentCallsIntoASingleProbe()
+    {
+        var calls = 0;
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var probe = new DelegateQuotaProbe("claude", async _ =>
+        {
+            System.Threading.Interlocked.Increment(ref calls);
+            await gate.Task;                       // hold the probe so callers pile up
+            return Snap("claude", 55);
+        });
+        var svc = new QuotaService([probe]);
+
+        // Fire many concurrent refreshes while the single probe is held open.
+        var tasks = Enumerable.Range(0, 12).Select(_ => svc.RefreshAsync("claude")).ToArray();
+        gate.SetResult();                          // release the probe
+        var results = await Task.WhenAll(tasks);
+
+        Assert.Equal(1, calls);                    // 12 callers -> ONE probe
+        Assert.All(results, r => Assert.Equal(55, r!.MaxUsedPct)); // all got the fresh value, none null
+    }
+
     private static QuotaSnapshot Snap(string cli, double usedPct, DateTime? fetchedAt = null) => new()
     {
         CliType = cli,

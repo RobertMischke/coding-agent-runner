@@ -50,7 +50,7 @@ public static class ClaudeEventAdapter
         if (doc.RootElement.ValueKind != JsonValueKind.Object) yield break;
 
         var root = doc.RootElement;
-        var type = root.TryGetProperty("type", out var t) ? t.GetString() : null;
+        var type = root.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
 
         switch (type)
         {

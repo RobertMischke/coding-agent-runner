@@ -43,6 +43,23 @@ public interface ICliBackend
     /// <summary>The tracked run info for <paramref name="runId"/>, or null when unknown.</summary>
     CliRunInfo? GetExecution(string runId);
 
+    /// <summary>
+    /// Whether <paramref name="sessionName"/> is a session id this CLI can resume.
+    /// Lets a consumer pre-validate a recorded session before requesting a resume —
+    /// e.g. Codex only resumes a UUID, so feeding it a slug from another CLI must be
+    /// rejected rather than silently starting fresh. Default backends accept any.
+    /// </summary>
+    bool IsCompatibleSessionName(string? sessionName);
+
+    /// <summary>
+    /// Drop the in-memory tracking for a finished run, releasing its output buffer
+    /// and file handles. After this, <see cref="GetOutput"/> reads from the persisted
+    /// log and <see cref="GetExecution"/> returns null. The engine does NOT auto-evict
+    /// finished runs (so the result stays readable); call this once you have consumed
+    /// a run's outcome. Returns false when the id is unknown.
+    /// </summary>
+    bool Forget(string runId);
+
     /// <summary>Whether this backend can isolate its persistent state for a clean run.</summary>
     bool SupportsCleanContext { get; }
 

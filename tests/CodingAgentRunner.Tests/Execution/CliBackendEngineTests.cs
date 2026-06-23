@@ -122,4 +122,71 @@ public class CliBackendEngineTests
         Assert.Null(err2);
         Assert.NotNull(run2);
     }
+
+    [Fact]
+    public async Task Stop_ClassifiesAsStopped_AndRaisesKilled_NotProcessExited()
+    {
+        using var logs = new TempLogs();
+        // A genuinely long-lived, cross-platform process so we can Stop() it mid-run.
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("ping", new[] { "-n", "20", "127.0.0.1" })
+            : ("sleep", new[] { "20" });
+        var backend = new ProbeBackend(exe, args, logs);
+
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sawKilled = false;
+        var sawProcessExited = false;
+        backend.OnStarted += (_, _) => started.TrySetResult();
+        backend.OnFinished += (_, r) => finished.TrySetResult(r);
+        backend.OnRunEvent += (_, e) =>
+        {
+            if (e is CliRunEvent.Killed) sawKilled = true;
+            if (e is CliRunEvent.ProcessExited) sawProcessExited = true;
+        };
+
+        var (run, err) = await backend.StartAsync(new CliRunRequest
+        {
+            RunId = "stop-test", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
+        });
+        Assert.Null(err);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.True(backend.Stop("stop-test", RunStopReason.UserStop));
+        var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+        // The deliberate stop is classified as 'stopped' (NOT 'failed' from the -1 kill),
+        // and surfaces as a Killed event rather than ProcessExited.
+        Assert.Equal("stopped", final.Status);
+        Assert.True(sawKilled, "expected a Killed event for a deliberate stop");
+        Assert.False(sawProcessExited, "a deliberately stopped run must not raise ProcessExited");
+
+        // Stop on an unknown run id returns false.
+        Assert.False(backend.Stop("no-such-run"));
+    }
+
+    [Fact]
+    public async Task Forget_EvictsInMemory_GetOutputThenFallsBackToDisk()
+    {
+        using var logs = new TempLogs();
+        var backend = new ProbeBackend("dotnet", ["--version"], logs);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        backend.OnFinished += (_, _) => finished.TrySetResult();
+
+        await backend.StartAsync(new CliRunRequest
+        {
+            RunId = "f1", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
+        });
+        await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.NotNull(backend.GetExecution("f1"));                 // tracked until forgotten
+        Assert.True(backend.Forget("f1"));
+        Assert.Null(backend.GetExecution("f1"));                    // evicted
+
+        // GetOutput now reads the persisted per-stream log from disk.
+        var fromDisk = backend.GetOutput("f1");
+        Assert.Contains(fromDisk, l => l.Stream == "stdout");
+
+        Assert.False(backend.Forget("f1"));                         // already gone
+    }
 }

@@ -28,8 +28,9 @@ namespace CodingAgentRunner.Execution;
 /// </summary>
 public abstract class CliBackendBase : ICliBackend
 {
-    /// <summary>Per-run tracking, keyed by <see cref="CliRunRequest.RunId"/>.</summary>
-    protected readonly ConcurrentDictionary<string, ProcInfo> Processes = new();
+    // Per-run tracking, keyed by CliRunRequest.RunId. Private: the contract is
+    // expressed entirely through ICliBackend's events + GetExecution/GetOutput.
+    private readonly ConcurrentDictionary<string, ProcInfo> _processes = new();
 
     /// <summary>Consumer configuration (paths, git-guard, hardening).</summary>
     protected CliOptions Options { get; }
@@ -177,11 +178,11 @@ public abstract class CliBackendBase : ICliBackend
     public async Task<(CliRunInfo? Run, string? Error)> StartAsync(CliRunRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (Processes.TryGetValue(request.RunId, out var existing))
+        if (_processes.TryGetValue(request.RunId, out var existing))
         {
             if (!SafeHasExited(existing.Process))
                 return (null, $"{CliType} run already in flight for '{request.RunId}'");
-            Processes.TryRemove(request.RunId, out _);
+            _processes.TryRemove(request.RunId, out _);
         }
 
         var (healthy, healError) = await EnsureCliHealthyAsync(ct).ConfigureAwait(false);
@@ -266,7 +267,7 @@ public abstract class CliBackendBase : ICliBackend
         };
         try { info.OutputLog.Reset(); }
         catch (Exception ex) { Logger.LogWarning(ex, "Failed to reset output log dir {Path}", logDir); }
-        Processes[request.RunId] = info;
+        _processes[request.RunId] = info;
 
         try { OnStarted?.Invoke(request.RunId, run); }
         catch (Exception ex) { Logger.LogWarning(ex, "OnStarted subscriber threw for {RunId}", request.RunId); }
@@ -285,7 +286,7 @@ public abstract class CliBackendBase : ICliBackend
                    + (string.IsNullOrWhiteSpace(thinking) ? "" : $", thinking={thinking}")
                    + (request.ResumeSession ? " (resume)" : ""),
         };
-        info.OutputBuffer.Add(startedLine);
+        lock (info.OutputBuffer) info.OutputBuffer.Add(startedLine);
         info.OutputLog.Append(startedLine);
         try { OnOutput?.Invoke(request.RunId, startedLine); } catch { }
 
@@ -365,10 +366,21 @@ public abstract class CliBackendBase : ICliBackend
                 DurationSeconds = duration,
             };
 
-            RaiseRunEvent(runId, new CliRunEvent.ProcessExited(exitCode, StatusString(status), duration) { RunId = runId });
+            // A runner-initiated stop is a Killed event; a self-exit is ProcessExited.
+            // This lets a subscriber tell a deliberate stop apart from a crash without
+            // re-deriving it. Either way OnFinished is the canonical "run is done".
+            if (info.StopReason != RunStopReason.None)
+                RaiseRunEvent(runId, new CliRunEvent.Killed(info.StopReason.ToString()) { RunId = runId });
+            else
+                RaiseRunEvent(runId, new CliRunEvent.ProcessExited(exitCode, StatusString(status), duration) { RunId = runId });
+
             try { OnFinished?.Invoke(runId, info.Execution); }
             catch (Exception ex) { Logger.LogWarning(ex, "OnFinished subscriber threw for {RunId}", runId); }
 
+            // Release the per-run file handles now that streaming is done. The entry
+            // stays in _processes so GetExecution/GetOutput keep working post-exit
+            // (the persisted log is read statically from disk); call Forget to evict.
+            try { info.OutputLog?.Dispose(); } catch { }
             info.CleanContext?.Dispose();
             info.CleanContext = null;
         }
@@ -390,7 +402,7 @@ public abstract class CliBackendBase : ICliBackend
     /// <inheritdoc />
     public bool Stop(string runId, RunStopReason reason = RunStopReason.UserStop)
     {
-        if (!Processes.TryGetValue(runId, out var info)) return false;
+        if (!_processes.TryGetValue(runId, out var info)) return false;
         try
         {
             if (!SafeHasExited(info.Process))
@@ -421,7 +433,7 @@ public abstract class CliBackendBase : ICliBackend
     /// <inheritdoc />
     public bool SendInput(string runId, string input)
     {
-        if (!Processes.TryGetValue(runId, out var info)) return false;
+        if (!_processes.TryGetValue(runId, out var info)) return false;
         if (SafeHasExited(info.Process)) return false;
         try
         {
@@ -436,7 +448,7 @@ public abstract class CliBackendBase : ICliBackend
     /// <inheritdoc />
     public IReadOnlyList<CliOutputLine> GetOutput(string runId)
     {
-        if (Processes.TryGetValue(runId, out var info))
+        if (_processes.TryGetValue(runId, out var info))
             lock (info.OutputBuffer) return info.OutputBuffer.ToList();
         // Fall back to the persisted log once the in-memory entry is gone.
         return RunLogStore.ReadMerged(LogPaths.GetRunLogDirectory(runId));
@@ -444,7 +456,18 @@ public abstract class CliBackendBase : ICliBackend
 
     /// <inheritdoc />
     public CliRunInfo? GetExecution(string runId)
-        => Processes.TryGetValue(runId, out var info) ? info.Execution : null;
+        => _processes.TryGetValue(runId, out var info) ? info.Execution : null;
+
+    /// <inheritdoc />
+    public virtual bool IsCompatibleSessionName(string? sessionName) => true;
+
+    /// <inheritdoc />
+    public bool Forget(string runId)
+    {
+        if (!_processes.TryRemove(runId, out var info)) return false;
+        try { info.OutputLog?.Dispose(); } catch { }
+        return true;
+    }
 
     // ── Process-tree kill ───────────────────────────────────────────────
 
@@ -489,8 +512,8 @@ public abstract class CliBackendBase : ICliBackend
         try { return p.Id; } catch { return 0; }
     }
 
-    /// <summary>Per-run mutable tracking state held in <see cref="Processes"/>.</summary>
-    protected sealed class ProcInfo
+    // Per-run mutable tracking state. Private implementation detail.
+    private sealed class ProcInfo
     {
         /// <summary>Create tracking state for a freshly spawned run.</summary>
         public ProcInfo(Process process, CliRunInfo execution, string workingDirectory)

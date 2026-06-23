@@ -73,37 +73,43 @@ public static class WindowsHandleScrubSpawner
         IntPtr stderrRead = IntPtr.Zero, stderrWrite = IntPtr.Zero;
         IntPtr stdinRead = IntPtr.Zero, stdinWrite = IntPtr.Zero;
         IntPtr nullHandle = IntPtr.Zero;
-        if (!CreatePipe(out stdoutRead, out stdoutWrite, ref sa, 0)) ThrowLastError("CreatePipe(stdout)");
-        if (!SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0)) ThrowLastError("SetHandleInformation(stdoutRead)");
-        if (!CreatePipe(out stderrRead, out stderrWrite, ref sa, 0)) ThrowLastError("CreatePipe(stderr)");
-        if (!SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0)) ThrowLastError("SetHandleInformation(stderrRead)");
-        if (wantStdin)
-        {
-            if (!CreatePipe(out stdinRead, out stdinWrite, ref sa, 0)) ThrowLastError("CreatePipe(stdin)");
-            if (!SetHandleInformation(stdinWrite, HANDLE_FLAG_INHERIT, 0)) ThrowLastError("SetHandleInformation(stdinWrite)");
-        }
-        else
-        {
-            // Open \\.\NUL with inheritable security attributes so the child
-            // receives a real, immediately-EOF stdin handle.
-            nullHandle = CreateFileW(
-                "NUL",
-                GENERIC_READ,
-                FILE_SHARE_READ | FILE_SHARE_WRITE,
-                ref sa,
-                OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
-                IntPtr.Zero);
-            if (nullHandle == INVALID_HANDLE_VALUE) ThrowLastError("CreateFileW(NUL)");
-        }
-
-        // 2. Build the PROC_THREAD_ATTRIBUTE_LIST holding ONLY our pipe handles.
-        //    InitializeProcThreadAttributeList is called twice: once with NULL to
-        //    size the buffer, once with the buffer.
         IntPtr lpAttributeList = IntPtr.Zero;
         IntPtr handleListPtr = IntPtr.Zero;
+        PROCESS_INFORMATION pi = default;
+        var success = false;
+        // Everything that allocates a kernel handle lives inside this try so the
+        // finally can close anything that fails partway. On the success path each
+        // handle is either transferred (to a FileStream / killTree) or closed and
+        // then zeroed, so the finally's cleanup is a no-op for it.
         try
         {
+            if (!CreatePipe(out stdoutRead, out stdoutWrite, ref sa, 0)) ThrowLastError("CreatePipe(stdout)");
+            if (!SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0)) ThrowLastError("SetHandleInformation(stdoutRead)");
+            if (!CreatePipe(out stderrRead, out stderrWrite, ref sa, 0)) ThrowLastError("CreatePipe(stderr)");
+            if (!SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0)) ThrowLastError("SetHandleInformation(stderrRead)");
+            if (wantStdin)
+            {
+                if (!CreatePipe(out stdinRead, out stdinWrite, ref sa, 0)) ThrowLastError("CreatePipe(stdin)");
+                if (!SetHandleInformation(stdinWrite, HANDLE_FLAG_INHERIT, 0)) ThrowLastError("SetHandleInformation(stdinWrite)");
+            }
+            else
+            {
+                // Open \\.\NUL with inheritable security attributes so the child
+                // receives a real, immediately-EOF stdin handle.
+                nullHandle = CreateFileW(
+                    "NUL",
+                    GENERIC_READ,
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    ref sa,
+                    OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL,
+                    IntPtr.Zero);
+                if (nullHandle == INVALID_HANDLE_VALUE) ThrowLastError("CreateFileW(NUL)");
+            }
+
+            // 2. Build the PROC_THREAD_ATTRIBUTE_LIST holding ONLY our pipe handles.
+            //    InitializeProcThreadAttributeList is called twice: once with NULL to
+            //    size the buffer, once with the buffer.
             UIntPtr size = UIntPtr.Zero;
             InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
             lpAttributeList = Marshal.AllocHGlobal((int)size);
@@ -158,7 +164,6 @@ public static class WindowsHandleScrubSpawner
             //    honour the attribute list. bInheritHandles=TRUE is REQUIRED for the
             //    handle-list attribute to take effect; with the attribute list it
             //    only inherits the handles we listed.
-            var pi = new PROCESS_INFORMATION();
             const uint creationFlags = CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW;
             if (!CreateProcessW(
                     null,
@@ -173,22 +178,27 @@ public static class WindowsHandleScrubSpawner
                     out pi))
                 ThrowLastError($"CreateProcessW({exePath})");
 
-            // We don't need the thread handle.
-            CloseHandle(pi.hThread);
+            // We don't need the thread handle. Zero it so the failure cleanup below
+            // never double-closes it.
+            CloseHandle(pi.hThread); pi.hThread = IntPtr.Zero;
 
-            // Close the child-side pipe ends in the parent so EOF propagates when
-            // the child closes its end.
-            CloseHandle(stdoutWrite);
-            CloseHandle(stderrWrite);
-            if (wantStdin) CloseHandle(stdinRead);
-            if (!wantStdin && nullHandle != IntPtr.Zero) CloseHandle(nullHandle);
+            // Close the child-side pipe ends in the parent so EOF propagates when the
+            // child closes its end; zero each so the finally treats it as handled.
+            CloseHandle(stdoutWrite); stdoutWrite = IntPtr.Zero;
+            CloseHandle(stderrWrite); stderrWrite = IntPtr.Zero;
+            if (wantStdin) { CloseHandle(stdinRead); stdinRead = IntPtr.Zero; }
+            else if (nullHandle != IntPtr.Zero) { CloseHandle(nullHandle); nullHandle = IntPtr.Zero; }
 
-            // Wrap the parent-side pipe ends as FileStreams.
-            var stdoutStream = new FileStream(new SafeFileHandle(stdoutRead, ownsHandle: true), FileAccess.Read);
-            var stderrStream = new FileStream(new SafeFileHandle(stderrRead, ownsHandle: true), FileAccess.Read);
-            FileStream? stdinStream = wantStdin
-                ? new FileStream(new SafeFileHandle(stdinWrite, ownsHandle: true), FileAccess.Write)
-                : null;
+            // Wrap the parent-side pipe ends as FileStreams (they now own the handle);
+            // zero each so the finally does not close a handle a FileStream owns.
+            var stdoutStream = new FileStream(new SafeFileHandle(stdoutRead, ownsHandle: true), FileAccess.Read); stdoutRead = IntPtr.Zero;
+            var stderrStream = new FileStream(new SafeFileHandle(stderrRead, ownsHandle: true), FileAccess.Read); stderrRead = IntPtr.Zero;
+            FileStream? stdinStream = null;
+            if (wantStdin)
+            {
+                stdinStream = new FileStream(new SafeFileHandle(stdinWrite, ownsHandle: true), FileAccess.Write);
+                stdinWrite = IntPtr.Zero;
+            }
 
             // Wrap the process by PID for HasExited / WaitForExitAsync; the raw
             // handle stays with our PROCESS_INFORMATION until Kill closes it.
@@ -202,6 +212,7 @@ public static class WindowsHandleScrubSpawner
                 finally { CloseHandle(rawHandle); }
             };
 
+            success = true; // the process handle is now owned by killTree
             return new Result(managed, stdinStream, stdoutStream, stderrStream, killTree);
         }
         finally
@@ -212,6 +223,14 @@ public static class WindowsHandleScrubSpawner
                 Marshal.FreeHGlobal(lpAttributeList);
             }
             if (handleListPtr != IntPtr.Zero) Marshal.FreeHGlobal(handleListPtr);
+
+            if (!success)
+            {
+                // Spawn failed partway. Close every kernel handle we created that was
+                // not transferred to a FileStream / killTree (those were zeroed above).
+                foreach (var h in new[] { stdoutRead, stdoutWrite, stderrRead, stderrWrite, stdinRead, stdinWrite, nullHandle, pi.hProcess, pi.hThread })
+                    if (h != IntPtr.Zero && h != INVALID_HANDLE_VALUE) CloseHandle(h);
+            }
         }
     }
 
