@@ -353,6 +353,10 @@ internal abstract class CliDriverBase : ICliDriver
             Status = "running",
             Model = model,
             ThinkingLevel = thinking,
+            // Surface the isolated clean-context home so a consumer can point its
+            // per-run side-channels (session-file liveness watcher) at the home the
+            // CLI actually writes to. Null for shared-context runs.
+            CleanContextHome = cleanContext?.TempHome,
         };
 
         var logDir = LogPaths.GetRunLogDirectory(request.RunId);

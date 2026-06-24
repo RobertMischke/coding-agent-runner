@@ -24,4 +24,13 @@ public record CliRunInfo
     public string? Model { get; init; }
     /// <summary>Thinking / reasoning level the run was invoked with, when applicable.</summary>
     public string? ThinkingLevel { get; init; }
+    /// <summary>
+    /// Absolute path of the isolated clean-context home this run was given
+    /// (<c>ContextMode=clean</c> on a CLI that supports it), else null. Surfaced
+    /// so a consumer can point its own per-run side-channels (e.g. a session-file
+    /// liveness watcher) at the home the CLI is actually writing to instead of the
+    /// user's real home — without it such a watcher sees permanent silence on a
+    /// clean run and a watchdog would false-kill a live run.
+    /// </summary>
+    public string? CleanContextHome { get; init; }
 }
