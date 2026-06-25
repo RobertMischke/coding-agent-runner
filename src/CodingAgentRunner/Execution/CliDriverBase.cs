@@ -95,6 +95,10 @@ internal abstract class CliDriverBase : ICliDriver
         DefaultThinkingLevel = CliThinkingLevels.DefaultFor(CliType, model),
         SupportsCleanContext = SupportsCleanContext,
         SupportsResume = SupportsResume,
+        // Codex's reasoning items surface as Heartbeat pings; Claude/Gemini go quiet
+        // while thinking. Moves to the descriptor's capability provider in the
+        // descriptor refactor (it is per-CLI, not a host concern).
+        EmitsHeartbeatDuringThinking = CliType == CliTypes.Codex,
         Knobs = DescribeKnobs(model),
     };
 

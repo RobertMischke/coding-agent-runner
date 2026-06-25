@@ -39,6 +39,15 @@ public sealed record CliCapabilities
     public bool SupportsResume { get; init; }
 
     /// <summary>
+    /// Whether this CLI emits <see cref="Events.CliRunEvent.Heartbeat"/> liveness pings
+    /// during extended thinking (Codex's reasoning at higher effort can run silent for
+    /// minutes). A consumer reads this to widen the watchdog silence budget for such a
+    /// run so "silent but pinging" is never mistaken for a hang. False for CLIs that go
+    /// quiet while thinking (Claude / Gemini).
+    /// </summary>
+    public bool EmitsHeartbeatDuringThinking { get; init; }
+
+    /// <summary>
     /// CLI-specific knobs beyond reasoning, as (knob-key → allowed values). The
     /// matching <see cref="Execution.CliRunRequest.Tuning"/> key feeds a chosen value
     /// back to the driver. Empty today for every built-in CLI — it is the seam for

@@ -82,6 +82,16 @@ public abstract record CliRunEvent
         bool IsUsingOverage) : CliRunEvent;
 
     /// <summary>
+    /// A stop condition the library recognised in the output (an environment blocker,
+    /// a quota wall, a sentinel, …). The engine emits it from an
+    /// <see cref="Execution.IInterruptClassifier"/>'s verdict so the host reacts to a
+    /// typed event instead of re-classifying raw lines; the host keeps authority over
+    /// <c>Stop()</c>. <see cref="IsFatal"/> distinguishes "must stop" from a
+    /// recognised-but-harmless case (e.g. <see cref="InterruptReason.SelfReference"/>).
+    /// </summary>
+    public sealed record Interrupt(InterruptReason Reason, string Detail, bool IsFatal) : CliRunEvent;
+
+    /// <summary>
     /// The run terminated — the <b>single</b> run-terminal event (it replaces the old
     /// separate <c>ProcessExited</c> / <c>Killed</c>). Turn-level events
     /// (<see cref="TurnCompleted"/> / <see cref="TurnFailed"/>) are conversation

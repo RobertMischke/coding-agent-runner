@@ -48,6 +48,9 @@ public static class RunPhaseTransitions
         CliRunEvent.RateLimitObserved   => current,
         CliRunEvent.RunEnded e          => e.Outcome == Model.RunOutcome.Stopped ? RunPhase.Killed : RunPhase.Exited,
         CliRunEvent.Unknown             => current == RunPhase.Spawning ? RunPhase.Unknown : current,
+        // An interrupt is a stop *verdict*, not a phase transition: the phase stays
+        // put; the host decides whether to Stop() (which yields RunEnded -> Killed).
+        CliRunEvent.Interrupt           => current,
         _                                => current
     };
 
@@ -74,6 +77,9 @@ public static class RunPhaseTransitions
         // experimental event). Counting it as activity is the defensive choice; the
         // unknown sample is captured downstream for diagnosis.
         CliRunEvent.Unknown           => true,
+        // A recognised stop condition does not extend the silence budget — the host
+        // latches and stops on it rather than reading it as the agent making progress.
+        CliRunEvent.Interrupt         => false,
         _                              => false
     };
 }
