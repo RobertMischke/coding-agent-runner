@@ -19,4 +19,9 @@
     <ProjectReference Include="..\CodingAgentRunner\CodingAgentRunner.csproj" />
   </ItemGroup>
 
+  <!-- Markdown is parsed ONCE into the span model (the consumer then materializes spans). -->
+  <ItemGroup>
+    <PackageReference Include="Markdig" Version="0.37.0" />
+  </ItemGroup>
+
 </Project>
