@@ -16,28 +16,27 @@ public class CliDriverEngineTests
     /// stdout line to a TurnCompleted, so the adapter-&gt;event wiring is exercised
     /// end-to-end — no subclassing, the descriptor IS the per-CLI behavior.
     /// </summary>
-    private static CliRunEngine ProbeEngine(string exe, string[] args, IRunLogPathProvider logs, ICliProcessSpawner? spawner = null)
+    private static CliDescriptor ProbeDescriptor(string exe, string[] args) => new()
     {
-        var descriptor = new CliDescriptor
+        CliType = CliTypes.Claude,
+        GetCliPath = _ => exe,
+        BuildLaunch = ctx => new LaunchSpec
         {
-            CliType = CliTypes.Claude,
-            GetCliPath = _ => exe,
-            BuildLaunch = ctx => new LaunchSpec
-            {
-                Executable = exe,
-                Argv = args,
-                WorkingDirectory = ctx.Request.WorkingDirectory,
-            },
-            Parse = (line, runId, stream) => stream == CliStreamKind.Stdout && !string.IsNullOrWhiteSpace(line)
-                ? new[] { new CliRunEvent.TurnCompleted("probe") { RunId = runId } }
-                : Array.Empty<CliRunEvent>(),
-            InterruptClassifier = InterruptClassifiers.None,
-            Liveness = LivenessSpec.InBandDefault,
-            Capabilities = m => new CliCapabilities { CliType = CliTypes.Claude, Model = m },
-        };
+            Executable = exe,
+            Argv = args,
+            WorkingDirectory = ctx.Request.WorkingDirectory,
+        },
+        Parse = (line, runId, stream) => stream == CliStreamKind.Stdout && !string.IsNullOrWhiteSpace(line)
+            ? new[] { new CliRunEvent.TurnCompleted("probe") { RunId = runId } }
+            : Array.Empty<CliRunEvent>(),
+        InterruptClassifier = InterruptClassifiers.None,
+        Liveness = LivenessSpec.InBandDefault,
+        Capabilities = m => new CliCapabilities { CliType = CliTypes.Claude, Model = m },
+    };
+
+    private static CliRunEngine ProbeEngine(string exe, string[] args, IRunLogPathProvider logs, ICliProcessSpawner? spawner = null)
         // git-guard off so the test keeps a clean PATH.
-        return new CliRunEngine(descriptor, new CliOptions { AllowAgentGitMutation = true, Spawner = spawner }, null, logs);
-    }
+        => new(ProbeDescriptor(exe, args), new CliOptions { AllowAgentGitMutation = true, Spawner = spawner }, null, logs);
 
     private sealed class TempLogs : IRunLogPathProvider, IDisposable
     {
@@ -356,6 +355,43 @@ public class CliDriverEngineTests
 
         Assert.Equal(1, hungCount);              // one-shot: OnHung fires exactly once on entering Hung
         Assert.Equal("stopped", final.Status);   // deliberate watchdog stop, classified as stopped (not a crash)
+    }
+
+    [Fact]
+    public async Task InterruptClassifier_EmitsTypedInterruptEvent_WithoutSelfStopping()
+    {
+        using var logs = new TempLogs();
+        // A process that prints a known environment-blocker line, then exits 0 on its own.
+        var (exe, args) = OperatingSystem.IsWindows()
+            ? ("cmd", new[] { "/c", "echo EACCES: permission denied" })
+            : ("sh", new[] { "-c", "echo 'EACCES: permission denied'" });
+        // Same probe descriptor, but with the real environment-blocker classifier wired in.
+        var descriptor = ProbeDescriptor(exe, args) with { InterruptClassifier = InterruptClassifiers.EnvironmentBlocker() };
+        var driver = new CliRunEngine(descriptor, new CliOptions { AllowAgentGitMutation = true }, null, logs);
+
+        CliRunEvent.Interrupt? interrupt = null;
+        var interruptCount = 0;
+        var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
+        driver.OnRunEvent += (_, e) =>
+        {
+            if (e is CliRunEvent.Interrupt i) { interrupt = i; Interlocked.Increment(ref interruptCount); }
+        };
+        driver.OnFinished += (_, r) => finished.TrySetResult(r);
+
+        await driver.StartAsync(new CliRunRequest
+        {
+            RunId = "intr", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
+        });
+        var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // The library classified the line and emitted ONE typed Interrupt event...
+        Assert.NotNull(interrupt);
+        Assert.Equal(1, interruptCount);                            // latched once
+        Assert.Equal(InterruptReason.EnvironmentBlocker, interrupt!.Reason);
+        Assert.True(interrupt.IsFatal);
+        Assert.Equal("intr", interrupt.RunId);
+        // ...but did NOT self-stop: the process ran to its own clean exit (echo exits 0).
+        Assert.Equal("completed", final.Status);
     }
 
     [Fact]

@@ -361,8 +361,27 @@ internal sealed class CliRunEngine : ICliDriver
 
                 var raw = new CliOutputLine { Timestamp = DateTime.UtcNow, Stream = stream, Text = line };
 
+                var silence = Math.Max(0, (DateTime.UtcNow - info.LastStreamedAt).TotalSeconds);
                 info.OutputLog.Append(raw);
                 info.LastStreamedAt = DateTime.UtcNow;
+
+                // Interrupt classification — the genuinely new lib behaviour. The library
+                // recognises a stop condition in the raw line (env blocker / quota / ...)
+                // and emits a typed CliRunEvent.Interrupt. The consumer keeps Stop()
+                // authority; the engine never self-stops. Latched once per run so a
+                // repeated blocker line yields a single event. Runs on every stream
+                // (blockers often surface on stderr).
+                if (!info.InterruptLatched)
+                {
+                    var verdict = _descriptor.InterruptClassifier.Classify(
+                        raw.Text, new InterruptContext(runId, info.Phase, silence, _descriptor.CliType));
+                    if (verdict is not null && info.TryLatchInterrupt())
+                    {
+                        var interruptEvt = verdict.ToEvent(runId);
+                        info.Phase = RunPhaseTransitions.Apply(info.Phase, interruptEvt);
+                        RaiseRunEvent(runId, interruptEvt);
+                    }
+                }
 
                 IEnumerable<CliRunEvent>? events = null;
                 try { events = _descriptor.Parse(raw.Text, runId, streamKind); }
@@ -371,6 +390,7 @@ internal sealed class CliRunEngine : ICliDriver
                     foreach (var evt in events)
                     {
                         if (evt is CliRunEvent.TurnFailed tf) info.LastFailureReason = tf.Reason;
+                        info.Phase = RunPhaseTransitions.Apply(info.Phase, evt);
                         RaiseRunEvent(runId, evt);
                     }
 
@@ -576,5 +596,16 @@ internal sealed class CliRunEngine : ICliDriver
         public DateTime LastStreamedAt { get; set; }
         public Task? StdoutReadTask { get; set; }
         public Task? StderrReadTask { get; set; }
+
+        // Advisory run phase fed to the interrupt classifier's context. Updated from
+        // both reader threads; an enum write is atomic and a lost update only yields a
+        // slightly-stale advisory phase, never a torn value.
+        public RunPhase Phase { get; set; } = RunPhase.Spawning;
+
+        // Emit at most one Interrupt per run, even though stdout + stderr read on
+        // separate threads. Interlocked makes the latch race-free.
+        private int _interruptLatched;
+        public bool InterruptLatched => Volatile.Read(ref _interruptLatched) == 1;
+        public bool TryLatchInterrupt() => Interlocked.CompareExchange(ref _interruptLatched, 1, 0) == 0;
     }
 }
