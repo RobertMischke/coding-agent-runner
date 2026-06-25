@@ -1,4 +1,3 @@
-using CodingAgentRunner.Drivers;
 using CodingAgentRunner.Execution;
 using Xunit;
 
@@ -18,11 +17,15 @@ public class CliDriverArgvTests
         ResumeSessionId = resume ? session : null,   // the id alone IS the resume signal
     };
 
+    // Build the launch spec exactly as a real run would (model + thinking normalized),
+    // straight from the built-in descriptor through the engine's test hook.
+    private static LaunchSpec Launch(CliDescriptor descriptor, CliRunRequest req)
+        => new CliRunEngine(descriptor).BuildLaunchForTest(req);
+
     [Fact]
     public void Claude_PutsPromptLast_UsesStreamJson_AndYoloByDefault()
     {
-        var psi = new ClaudeDriver().BuildStartInfoForTest(Req(model: "claude-opus-4-8", thinking: "xhigh"));
-        var args = psi.ArgumentList;
+        var args = Launch(BuiltInDescriptors.Claude, Req(model: "claude-opus-4-8", thinking: "xhigh")).Argv;
 
         Assert.Equal("-p", args[0]);
         Assert.Contains("--output-format", args);
@@ -42,17 +45,16 @@ public class CliDriverArgvTests
     [Fact]
     public void Claude_Resume_AddsDashR()
     {
-        var psi = new ClaudeDriver().BuildStartInfoForTest(Req(session: "abc-123", resume: true));
-        Assert.Contains("-r", psi.ArgumentList);
-        Assert.Contains("abc-123", psi.ArgumentList);
+        var args = Launch(BuiltInDescriptors.Claude, Req(session: "abc-123", resume: true)).Argv;
+        Assert.Contains("-r", args);
+        Assert.Contains("abc-123", args);
     }
 
     [Fact]
     public void Codex_UsesExecExperimentalJson_StdinDash_AndSandbox()
     {
-        var driver = new CodexDriver();
-        var psi = driver.BuildStartInfoForTest(Req(model: "gpt-5.5", thinking: "high"));
-        var args = psi.ArgumentList;
+        var launch = Launch(BuiltInDescriptors.Codex, Req(model: "gpt-5.5", thinking: "high"));
+        var args = launch.Argv;
 
         Assert.Equal("exec", args[0]);
         Assert.Contains("--experimental-json", args);
@@ -65,31 +67,29 @@ public class CliDriverArgvTests
         Assert.Equal("-", args[^1]);                     // prompt via stdin
 
         // ...and the prompt is the stdin payload, not an argv.
-        Assert.Equal("line one\nline two", driver.BuildPromptStdinPayloadForTest(Req(model: "gpt-5.5")));
+        Assert.Equal("line one\nline two", launch.StdinPayload);
     }
 
     [Fact]
     public void Codex_Resume_OnlyForAUuidSession()
     {
-        var psi = new CodexDriver().BuildStartInfoForTest(Req(session: "not-a-uuid", resume: true));
-        Assert.DoesNotContain("resume", psi.ArgumentList);
+        Assert.DoesNotContain("resume", Launch(BuiltInDescriptors.Codex, Req(session: "not-a-uuid", resume: true)).Argv);
 
-        var withUuid = new CodexDriver().BuildStartInfoForTest(
-            Req(session: "12345678-1234-1234-1234-123456789abc", resume: true));
-        Assert.Contains("resume", withUuid.ArgumentList);
+        var withUuid = Launch(BuiltInDescriptors.Codex,
+            Req(session: "12345678-1234-1234-1234-123456789abc", resume: true)).Argv;
+        Assert.Contains("resume", withUuid);
     }
 
     [Fact]
     public void Codex_Tuning_BecomesConfigOverrides()
     {
-        var psi = new CodexDriver().BuildStartInfoForTest(new CliRunRequest
+        var args = Launch(BuiltInDescriptors.Codex, new CliRunRequest
         {
             RunId = "r",
             Prompt = "p",
             WorkingDirectory = Path.GetTempPath(),
             Tuning = new Dictionary<string, string> { ["model_reasoning_summary"] = "concise" },
-        });
-        var args = psi.ArgumentList;
+        }).Argv;
         Assert.Contains("-c", args);
         Assert.Contains("model_reasoning_summary=concise", args);
     }
@@ -97,8 +97,7 @@ public class CliDriverArgvTests
     [Fact]
     public void Gemini_UsesStreamJson_AndAlwaysSkipsTrust()
     {
-        var psi = new GeminiDriver().BuildStartInfoForTest(Req());
-        var args = psi.ArgumentList;
+        var args = Launch(BuiltInDescriptors.Gemini, Req()).Argv;
         Assert.Contains("-o", args);
         Assert.Contains("stream-json", args);
         Assert.Contains("--skip-trust", args);   // never blocks on the trust modal
@@ -108,17 +107,16 @@ public class CliDriverArgvTests
     public void Antigravity_NewConversationWithModel_AndResumeViaSendMessage()
     {
         // New conversation: new-conversation --model=<tier> "<prompt>"
-        var fresh = new AntigravityDriver().BuildStartInfoForTest(Req(model: "gemini-pro"));
-        Assert.Equal("new-conversation", fresh.ArgumentList[0]);
-        Assert.Contains("--model=pro", fresh.ArgumentList);              // pro tier mapped
-        Assert.Equal("line one\nline two", fresh.ArgumentList[^1]);      // prompt is the last positional
+        var fresh = Launch(BuiltInDescriptors.Antigravity, Req(model: "gemini-pro")).Argv;
+        Assert.Equal("new-conversation", fresh[0]);
+        Assert.Contains("--model=pro", fresh);              // pro tier mapped
+        Assert.Equal("line one\nline two", fresh[^1]);      // prompt is the last positional
 
         // Resume: send-message <uuid> "<prompt>"
-        var resumed = new AntigravityDriver().BuildStartInfoForTest(
-            Req(session: "12345678-1234-1234-1234-123456789abc", resume: true));
-        Assert.Equal("send-message", resumed.ArgumentList[0]);
-        Assert.Contains("12345678-1234-1234-1234-123456789abc", resumed.ArgumentList);
-        Assert.DoesNotContain("new-conversation", resumed.ArgumentList);
+        var resumed = Launch(BuiltInDescriptors.Antigravity,
+            Req(session: "12345678-1234-1234-1234-123456789abc", resume: true)).Argv;
+        Assert.Equal("send-message", resumed[0]);
+        Assert.Contains("12345678-1234-1234-1234-123456789abc", resumed);
+        Assert.DoesNotContain("new-conversation", resumed);
     }
-
 }

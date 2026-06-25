@@ -1,5 +1,4 @@
 using CodingAgentRunner;
-using CodingAgentRunner.Drivers;
 using CodingAgentRunner.Model;
 using Xunit;
 
@@ -11,10 +10,12 @@ public class CliRunnerTests
     public void Get_ResolvesEachSupportedCli()
     {
         var runner = new CliRunner();
-        Assert.IsType<ClaudeDriver>(runner.Get("claude"));
-        Assert.IsType<CodexDriver>(runner.Get("codex"));
-        Assert.IsType<GeminiDriver>(runner.Get("gemini"));
-        Assert.IsType<AntigravityDriver>(runner.Get("antigravity"));
+        // Every supported CLI resolves to an engine reporting that CLI type — there are
+        // no per-CLI subclasses anymore, the descriptor carries the identity.
+        Assert.Equal(CliTypes.Claude, runner.Get("claude").CliType);
+        Assert.Equal(CliTypes.Codex, runner.Get("codex").CliType);
+        Assert.Equal(CliTypes.Gemini, runner.Get("gemini").CliType);
+        Assert.Equal(CliTypes.Antigravity, runner.Get("antigravity").CliType);
     }
 
     [Fact]

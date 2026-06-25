@@ -1,15 +1,16 @@
 using Microsoft.Extensions.Logging;
 using CodingAgentRunner.Abstractions;
-using CodingAgentRunner.Drivers;
 using CodingAgentRunner.Execution;
 using CodingAgentRunner.Model;
 
 namespace CodingAgentRunner;
 
 /// <summary>
-/// The entry point: builds and holds one <see cref="ICliDriver"/> per supported
-/// CLI from a single set of options, so a consumer wires the library once and then
-/// resolves a driver by CLI type.
+/// The entry point: builds and holds one <see cref="ICliDriver"/> per supported CLI
+/// from a single set of options, so a consumer wires the library once and then
+/// resolves a driver by CLI type. Each driver is one <see cref="CliRunEngine"/>
+/// parameterized by a built-in <see cref="CliDescriptor"/> — there are no per-CLI
+/// subclasses; adding a CLI is a descriptor in the catalog.
 ///
 /// <code>
 /// var runner = new CliRunner(new CliOptions());
@@ -27,20 +28,17 @@ public sealed class CliRunner
 {
     private readonly Dictionary<string, ICliDriver> _drivers;
 
-    /// <summary>Build a runner with drivers for every supported CLI sharing the given options/providers.</summary>
+    /// <summary>Build a runner with an engine for every built-in CLI sharing the given options/providers.</summary>
     public CliRunner(
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,
         IUserHomeProvider? home = null)
     {
-        _drivers = new Dictionary<string, ICliDriver>(StringComparer.OrdinalIgnoreCase)
-        {
-            [CliTypes.Claude]      = new ClaudeDriver(options, logger, logPaths, home),
-            [CliTypes.Codex]       = new CodexDriver(options, logger, logPaths, home),
-            [CliTypes.Gemini]      = new GeminiDriver(options, logger, logPaths, home),
-            [CliTypes.Antigravity] = new AntigravityDriver(options, logger, logPaths, home),
-        };
+        var catalog = BuiltInDescriptors.DefaultCatalog();
+        _drivers = new Dictionary<string, ICliDriver>(StringComparer.OrdinalIgnoreCase);
+        foreach (var type in catalog.Available)
+            _drivers[type] = new CliRunEngine(catalog.Get(type), options, logger, logPaths, home);
     }
 
     // ── Typed accessors (sugar over Get) — for code that statically knows the CLI ──

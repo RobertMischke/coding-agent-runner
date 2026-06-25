@@ -1,6 +1,7 @@
 using CodingAgentRunner.Abstractions;
 using CodingAgentRunner.Events;
 using CodingAgentRunner.Model;
+using Microsoft.Extensions.Logging;
 
 namespace CodingAgentRunner.Execution;
 
@@ -8,11 +9,23 @@ namespace CodingAgentRunner.Execution;
 public delegate CliCapabilities CliCapabilitiesProvider(string? model);
 
 /// <summary>
-/// Runs once before spawn to self-heal a known environment issue (e.g. Claude's npm
-/// shim) so a run does not fail on a recoverable setup problem. Throws when the issue
-/// is unrecoverable.
+/// What a <see cref="PreSpawnHealth"/> check gets: a probe for the CLI's availability
+/// (the engine's <c>TestCliPath</c>) and a logger. Lets the heal decide and report
+/// without holding engine state.
 /// </summary>
-public delegate void PreSpawnHealth(CliLaunchContext context);
+/// <param name="Probe">Re-probe the CLI's availability (path + <c>--version</c> verdict).</param>
+/// <param name="Logger">Diagnostics logger for the heal.</param>
+public readonly record struct PreSpawnHealthContext(
+    Func<(bool Available, string? Version, string Path)> Probe,
+    ILogger Logger);
+
+/// <summary>
+/// An optional pre-spawn self-heal for a known, recoverable environment issue (e.g.
+/// Claude's half-installed npm shim). Returns <c>(true, null)</c> when healthy, or
+/// <c>(false, error)</c> to fail the spawn with a clear message. Null on a descriptor
+/// means "always healthy".
+/// </summary>
+public delegate Task<(bool Ok, string? Error)> PreSpawnHealth(PreSpawnHealthContext context, CancellationToken ct);
 
 /// <summary>
 /// The one per-CLI value a consumer resolves by type and <em>uses</em> — a record of
@@ -28,7 +41,7 @@ public sealed record CliDescriptor
     /// <summary>Resolves the executable path/command from consumer options.</summary>
     public required Func<CliOptions, string> GetCliPath { get; init; }
 
-    /// <summary>Builds the immutable launch spec for a run.</summary>
+    /// <summary>Builds the immutable launch spec for a run (argv, stdin, executable).</summary>
     public required LaunchSpecBuilder BuildLaunch { get; init; }
 
     /// <summary>Maps raw output lines onto typed events (model-blind).</summary>
@@ -48,4 +61,13 @@ public sealed record CliDescriptor
 
     /// <summary>Optional pre-spawn self-heal (e.g. Claude's npm-shim heal); null when the CLI needs none.</summary>
     public PreSpawnHealth? EnsureHealthy { get; init; }
+
+    /// <summary>The clean-context recipe (config-home redirect + seed files), or null when this CLI cannot isolate per-run state.</summary>
+    public CleanContextSpec? CleanContext { get; init; }
+
+    /// <summary>Optional custom availability probe (e.g. Antigravity has no <c>--version</c>); null uses the engine's default <c>--version</c> probe.</summary>
+    public Func<CliOptions, string?, (bool Available, string? Version, string Path)>? ProbeCliPath { get; init; }
+
+    /// <summary>Whether this CLI can isolate per-run state — true exactly when <see cref="CleanContext"/> is set.</summary>
+    public bool SupportsCleanContext => CleanContext is not null;
 }

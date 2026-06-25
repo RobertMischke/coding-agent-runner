@@ -11,36 +11,32 @@ namespace CodingAgentRunner.Tests.Execution;
 public class CliDriverEngineTests
 {
     /// <summary>
-    /// A real driver over a trivial, cross-platform process (`dotnet --version`)
-    /// that exits 0 after printing one line. It maps every stdout line to a
-    /// TurnCompleted so the adapter-&gt;event wiring is exercised end-to-end.
+    /// A real engine over a trivial, cross-platform process (`dotnet --version`) that
+    /// exits 0 after printing one line. Built from a minimal descriptor that maps every
+    /// stdout line to a TurnCompleted, so the adapter-&gt;event wiring is exercised
+    /// end-to-end — no subclassing, the descriptor IS the per-CLI behavior.
     /// </summary>
-    private sealed class ProbeDriver : CliDriverBase
+    private static CliRunEngine ProbeEngine(string exe, string[] args, IRunLogPathProvider logs, ICliProcessSpawner? spawner = null)
     {
-        private readonly string _exe;
-        private readonly string[] _args;
-
-        public ProbeDriver(string exe, string[] args, IRunLogPathProvider logs, ICliProcessSpawner? spawner = null)
-            : base(new CliOptions { AllowAgentGitMutation = true, Spawner = spawner }, null, logs) // git-guard off: keep PATH clean
+        var descriptor = new CliDescriptor
         {
-            _exe = exe;
-            _args = args;
-        }
-
-        public override string CliType => CliTypes.Claude;
-        public override string GetCliPath() => _exe;
-
-        protected override ProcessStartInfo BuildStartInfo(CliRunRequest request, string? model, string? thinkingLevel)
-        {
-            var psi = new ProcessStartInfo { FileName = _exe, WorkingDirectory = request.WorkingDirectory };
-            foreach (var a in _args) psi.ArgumentList.Add(a);
-            return psi;
-        }
-
-        protected override IEnumerable<CliRunEvent> MapLineToRunEvents(string runId, CliOutputLine line)
-            => line.Stream == "stdout" && !string.IsNullOrWhiteSpace(line.Text)
+            CliType = CliTypes.Claude,
+            GetCliPath = _ => exe,
+            BuildLaunch = ctx => new LaunchSpec
+            {
+                Executable = exe,
+                Argv = args,
+                WorkingDirectory = ctx.Request.WorkingDirectory,
+            },
+            Parse = (line, runId, stream) => stream == CliStreamKind.Stdout && !string.IsNullOrWhiteSpace(line)
                 ? new[] { new CliRunEvent.TurnCompleted("probe") { RunId = runId } }
-                : Array.Empty<CliRunEvent>();
+                : Array.Empty<CliRunEvent>(),
+            InterruptClassifier = InterruptClassifiers.None,
+            Liveness = LivenessSpec.InBandDefault,
+            Capabilities = m => new CliCapabilities { CliType = CliTypes.Claude, Model = m },
+        };
+        // git-guard off so the test keeps a clean PATH.
+        return new CliRunEngine(descriptor, new CliOptions { AllowAgentGitMutation = true, Spawner = spawner }, null, logs);
     }
 
     private sealed class TempLogs : IRunLogPathProvider, IDisposable
@@ -55,7 +51,7 @@ public class CliDriverEngineTests
     public async Task Run_StreamsOutput_RaisesTypedEvents_AndClassifiesCleanExitAsCompleted()
     {
         using var logs = new TempLogs();
-        var driver = new ProbeDriver("dotnet", ["--version"], logs);
+        var driver = ProbeEngine("dotnet", ["--version"], logs);
 
         var events = new ConcurrentQueue<CliRunEvent>();
         driver.OnRunEvent += (_, e) => events.Enqueue(e);
@@ -102,10 +98,9 @@ public class CliDriverEngineTests
     public async Task StreamAsync_PullStream_StartsWithRunStarted_EndsAtTerminal()
     {
         using var logs = new TempLogs();
-        var driver = new ProbeDriver("dotnet", ["--version"], logs);
+        var driver = ProbeEngine("dotnet", ["--version"], logs);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
-        // One await foreach — no event wiring, no manual "done?" tracking.
         var seq = new List<CliRunEvent>();
         await foreach (var e in driver.StreamAsync(new CliRunRequest
         {
@@ -115,7 +110,6 @@ public class CliDriverEngineTests
             seq.Add(e);
         }
 
-        // Same ordering guarantees as the push-event path; the terminal event closes the stream.
         Assert.IsType<CliRunEvent.RunStarted>(seq[0]);
         Assert.IsType<CliRunEvent.RunEnded>(seq[^1]);
         Assert.Contains(seq, e => e is CliRunEvent.TurnCompleted);
@@ -126,7 +120,7 @@ public class CliDriverEngineTests
     public async Task StreamAsync_SpawnError_SurfacesAsThrow()
     {
         using var logs = new TempLogs();
-        var driver = new ProbeDriver("definitely-not-a-real-binary-xyz123", [], logs);
+        var driver = ProbeEngine("definitely-not-a-real-binary-xyz123", [], logs);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
 
         await Assert.ThrowsAnyAsync<Exception>(async () =>
@@ -143,7 +137,7 @@ public class CliDriverEngineTests
         var (exe, args) = OperatingSystem.IsWindows()
             ? ("powershell", new[] { "-NoProfile", "-Command", "Start-Sleep -Seconds 10" })
             : ("sleep", new[] { "10" });
-        var driver = new ProbeDriver(exe, args, logs);
+        var driver = ProbeEngine(exe, args, logs);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
 
         var first = driver.StreamAsync(new CliRunRequest
@@ -167,7 +161,7 @@ public class CliDriverEngineTests
         var (exe, args) = OperatingSystem.IsWindows()
             ? ("powershell", new[] { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" })
             : ("sleep", new[] { "30" });
-        var driver = new ProbeDriver(exe, args, logs);
+        var driver = ProbeEngine(exe, args, logs);
         using var cts = new CancellationTokenSource();
 
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -190,7 +184,7 @@ public class CliDriverEngineTests
     public async Task DuplicateRunId_WhileLive_IsRejected_ButReusableAfterExit()
     {
         using var logs = new TempLogs();
-        var driver = new ProbeDriver("dotnet", ["--version"], logs);
+        var driver = ProbeEngine("dotnet", ["--version"], logs);
 
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         driver.OnFinished += (_, _) => finished.TrySetResult();
@@ -204,7 +198,6 @@ public class CliDriverEngineTests
 
         await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        // After the first run exits, the same id can be reused.
         var (run2, err2) = await driver.StartAsync(new CliRunRequest
         {
             RunId = "dup", Prompt = "x", WorkingDirectory = Path.GetTempPath(),
@@ -217,11 +210,10 @@ public class CliDriverEngineTests
     public async Task Stop_ClassifiesAsStopped_AndRaisesRunEnded_WithStoppedOutcome()
     {
         using var logs = new TempLogs();
-        // A genuinely long-lived, cross-platform process so we can Stop() it mid-run.
         var (exe, args) = OperatingSystem.IsWindows()
             ? ("ping", new[] { "-n", "20", "127.0.0.1" })
             : ("sleep", new[] { "20" });
-        var driver = new ProbeDriver(exe, args, logs);
+        var driver = ProbeEngine(exe, args, logs);
 
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -243,14 +235,11 @@ public class CliDriverEngineTests
         Assert.True(driver.Stop("stop-test", RunStopReason.UserStop));
         var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(20));
 
-        // The deliberate stop is classified as 'stopped' (NOT 'failed' from the -1 kill),
-        // and surfaces as ONE RunEnded with Outcome=Stopped carrying the reason.
         Assert.Equal("stopped", final.Status);
         Assert.NotNull(end);
         Assert.Equal(RunOutcome.Stopped, end!.Outcome);
         Assert.Equal(RunStopReason.UserStop.ToString(), end.Reason);
 
-        // Stop on an unknown run id returns false.
         Assert.False(driver.Stop("no-such-run"));
     }
 
@@ -273,7 +262,7 @@ public class CliDriverEngineTests
     {
         using var logs = new TempLogs();
         var spawner = new CountingSpawner();
-        var driver = new ProbeDriver("dotnet", ["--version"], logs, spawner);
+        var driver = ProbeEngine("dotnet", ["--version"], logs, spawner);
 
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
         driver.OnFinished += (_, r) => finished.TrySetResult(r);
@@ -289,7 +278,7 @@ public class CliDriverEngineTests
     public async Task StartAsync_RejectsInvalidInput_WithClearErrors()
     {
         using var logs = new TempLogs();
-        var driver = new ProbeDriver("dotnet", ["--version"], logs);
+        var driver = ProbeEngine("dotnet", ["--version"], logs);
         var wd = Path.GetTempPath();
 
         var (_, e1) = await driver.StartAsync(new CliRunRequest { RunId = "", Prompt = "x", WorkingDirectory = wd });
@@ -316,7 +305,7 @@ public class CliDriverEngineTests
         var (exe, args) = OperatingSystem.IsWindows()
             ? ("cmd", new[] { "/c", "exit 3" })
             : ("sh", new[] { "-c", "exit 3" });
-        var driver = new ProbeDriver(exe, args, logs);
+        var driver = ProbeEngine(exe, args, logs);
 
         CliRunEvent.RunEnded? end = null;
         var finished = new TaskCompletionSource<CliRunInfo>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -329,7 +318,6 @@ public class CliDriverEngineTests
         });
         var final = await finished.Task.WaitAsync(TimeSpan.FromSeconds(30));
 
-        // Non-zero exit, no stop reason → Failed (a self-crash), with the exit-code fallback reason.
         Assert.Equal("failed", final.Status);
         Assert.NotNull(end);
         Assert.Equal(RunOutcome.Failed, end!.Outcome);
@@ -341,13 +329,11 @@ public class CliDriverEngineTests
     public async Task RunWatchdog_AutoStops_AHungRun()
     {
         using var logs = new TempLogs();
-        // A silent, long-lived process: no stdout → no activity → stays in Spawning.
         var (exe, args) = OperatingSystem.IsWindows()
             ? ("powershell", new[] { "-NoProfile", "-Command", "Start-Sleep -Seconds 30" })
             : ("sleep", new[] { "30" });
-        var driver = new ProbeDriver(exe, args, logs);
+        var driver = ProbeEngine(exe, args, logs);
 
-        // Aggressive policy: no warm-up, hung after 2s of Spawning silence, tick every 1s.
         var policy = WatchdogPolicy.Default with
         {
             WarmUpGraceSeconds = 0,
@@ -376,7 +362,7 @@ public class CliDriverEngineTests
     public async Task Forget_EvictsInMemory_GetOutputThenFallsBackToDisk()
     {
         using var logs = new TempLogs();
-        var driver = new ProbeDriver("dotnet", ["--version"], logs);
+        var driver = ProbeEngine("dotnet", ["--version"], logs);
         var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         driver.OnFinished += (_, _) => finished.TrySetResult();
 
@@ -390,7 +376,6 @@ public class CliDriverEngineTests
         Assert.True(driver.Forget("f1"));
         Assert.Null(driver.GetExecution("f1"));                    // evicted
 
-        // GetOutput now reads the persisted per-stream log from disk.
         var fromDisk = driver.GetOutput("f1");
         Assert.Contains(fromDisk, l => l.Stream == "stdout");
 

@@ -1,5 +1,6 @@
 using CodingAgentRunner.Events;
 using CodingAgentRunner.Model;
+using Microsoft.Extensions.Logging;
 
 namespace CodingAgentRunner.Execution;
 
@@ -38,14 +39,16 @@ public sealed record LaunchSpec
 /// pure function of its inputs.
 /// </summary>
 /// <param name="Request">The original run request.</param>
-/// <param name="CliPath">The resolved executable for this CLI.</param>
+/// <param name="CliPath">The configured executable path/command for this CLI (the builder resolves it to a real binary).</param>
 /// <param name="ResolvedModel">The normalized model id, or null for the CLI default.</param>
 /// <param name="ResolvedThinkingLevel">The normalized thinking level, or null when the CLI/model has no selector.</param>
+/// <param name="Logger">Diagnostics logger (e.g. for a binary-shim rewrite note).</param>
 public sealed record CliLaunchContext(
     CliRunRequest Request,
     string CliPath,
     string? ResolvedModel,
-    string? ResolvedThinkingLevel);
+    string? ResolvedThinkingLevel,
+    ILogger Logger);
 
 /// <summary>Builds the immutable <see cref="LaunchSpec"/> for a run — the descriptor seam that replaces a driver's <c>BuildStartInfo</c> + <c>GetPromptStdinPayload</c>.</summary>
 public delegate LaunchSpec LaunchSpecBuilder(CliLaunchContext context);

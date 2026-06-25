@@ -14,47 +14,50 @@ using CodingAgentRunner.Model;
 namespace CodingAgentRunner.Execution;
 
 /// <summary>
-/// The spawn engine shared by every CLI driver. It owns the lifecycle a run goes
-/// through — resolve binary &#8594; harden environment &#8594; install the git guard
-/// &#8594; spawn &#8594; stream stdout/stderr &#8594; map lines to typed
-/// <see cref="CliRunEvent"/>s &#8594; classify the exit — and leaves only the
-/// CLI-specific bits (the argument list, the optional stdin payload, the frame
-/// adapter) to subclasses.
+/// The one spawn engine for every CLI — parameterized by a <see cref="CliDescriptor"/>
+/// rather than subclassed. It owns the lifecycle a run goes through (resolve binary
+/// &#8594; harden environment &#8594; install the git guard &#8594; spawn &#8594; stream
+/// stdout/stderr &#8594; map lines to typed <see cref="CliRunEvent"/>s &#8594; classify
+/// the exit) and reads every CLI-specific bit — the argv, the optional stdin payload,
+/// the frame parser, the capabilities, the clean-context recipe — from the descriptor.
 ///
 /// <para>
-/// Completion is the CLI's REAL signal: a <see cref="CliRunEvent.TurnCompleted"/>
-/// raised by the subclass's adapter plus the classified
-/// <see cref="CliRunEvent.RunEnded"/> from this engine. There is no
-/// output-sentinel scraping.
+/// <b>internal sealed</b> on purpose: a consumer cannot subclass or even name the
+/// engine; it sees only <see cref="ICliDriver"/> / <see cref="ICliCatalog"/> /
+/// <see cref="CliDescriptor"/>. Adding a CLI is a descriptor in the catalog, not an
+/// override here.
 /// </para>
 /// </summary>
-internal abstract class CliDriverBase : ICliDriver
+internal sealed class CliRunEngine : ICliDriver
 {
-    // Per-run tracking, keyed by CliRunRequest.RunId. Private: the contract is
-    // expressed entirely through ICliDriver's events + GetExecution/GetOutput.
+    private readonly CliDescriptor _descriptor;
+
+    // Per-run tracking, keyed by CliRunRequest.RunId.
     private readonly ConcurrentDictionary<string, ProcInfo> _processes = new();
     // Run ids with an active StreamAsync pull-stream — one per run (push events still multiplex).
     private readonly ConcurrentDictionary<string, byte> _streaming = new();
 
     /// <summary>Consumer configuration (paths, git-guard, hardening).</summary>
-    protected CliOptions Options { get; }
+    private CliOptions Options { get; }
 
     /// <summary>Diagnostics logger (never null; defaults to a no-op).</summary>
-    protected ILogger Logger { get; }
+    private ILogger Logger { get; }
 
     /// <summary>Where per-run output logs are written.</summary>
-    protected IRunLogPathProvider LogPaths { get; }
+    private IRunLogPathProvider LogPaths { get; }
 
     /// <summary>User-home / temp-root provider for clean-context homes.</summary>
-    protected IUserHomeProvider Home { get; }
+    private IUserHomeProvider Home { get; }
 
-    /// <summary>Create the engine with consumer-supplied configuration and providers.</summary>
-    protected CliDriverBase(
+    /// <summary>Create the engine for one CLI descriptor with consumer-supplied configuration and providers.</summary>
+    public CliRunEngine(
+        CliDescriptor descriptor,
         CliOptions? options = null,
         ILogger? logger = null,
         IRunLogPathProvider? logPaths = null,
         IUserHomeProvider? home = null)
     {
+        _descriptor = descriptor ?? throw new ArgumentNullException(nameof(descriptor));
         Options = options ?? new CliOptions();
         Logger = logger ?? NullLogger.Instance;
         Home = home ?? new DefaultUserHomeProvider();
@@ -62,45 +65,21 @@ internal abstract class CliDriverBase : ICliDriver
     }
 
     /// <inheritdoc />
-    public abstract string CliType { get; }
+    public string CliType => _descriptor.CliType;
 
     /// <inheritdoc />
-    public abstract string GetCliPath();
+    public string GetCliPath() => _descriptor.GetCliPath(Options);
 
     /// <inheritdoc />
-    public virtual bool SupportsCleanContext => false;
-
-    /// <summary>Create a clean per-run config home, or null when unsupported / impossible.</summary>
-    public virtual CleanContextPreparation? PrepareCleanContext(string workingDirectory) => null;
-
-    /// <summary>Whether this CLI can resume a session via <see cref="CliRunRequest.ResumeSessionId"/>.</summary>
-    protected virtual bool SupportsResume => false;
-
-    /// <summary>
-    /// CLI-specific knobs beyond reasoning, advertised through <see cref="Capabilities"/>.
-    /// Empty for every built-in CLI; a driver overrides this when it grows a real knob.
-    /// </summary>
-    protected virtual IReadOnlyDictionary<string, IReadOnlyList<string>> DescribeKnobs(string? model)
-        => EmptyKnobs;
-
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> EmptyKnobs
-        = new Dictionary<string, IReadOnlyList<string>>();
+    public bool SupportsCleanContext => _descriptor.SupportsCleanContext;
 
     /// <inheritdoc />
-    public virtual CliCapabilities Capabilities(string? model) => new()
-    {
-        CliType = CliType,
-        Model = string.IsNullOrWhiteSpace(model) ? null : model.Trim(),
-        ThinkingLevels = CliThinkingLevels.For(CliType, model),
-        DefaultThinkingLevel = CliThinkingLevels.DefaultFor(CliType, model),
-        SupportsCleanContext = SupportsCleanContext,
-        SupportsResume = SupportsResume,
-        // Codex's reasoning items surface as Heartbeat pings; Claude/Gemini go quiet
-        // while thinking. Moves to the descriptor's capability provider in the
-        // descriptor refactor (it is per-CLI, not a host concern).
-        EmitsHeartbeatDuringThinking = CliType == CliTypes.Codex,
-        Knobs = DescribeKnobs(model),
-    };
+    public CliCapabilities Capabilities(string? model) => _descriptor.Capabilities(model);
+
+    /// <inheritdoc />
+    public bool IsCompatibleSessionId(string? sessionId) => _descriptor.CanResumeSessionId(sessionId);
+
+    private static string? NormalizeModel(string? model) => string.IsNullOrWhiteSpace(model) ? null : model.Trim();
 
     // ── Events ──────────────────────────────────────────────────────────
 
@@ -113,8 +92,7 @@ internal abstract class CliDriverBase : ICliDriver
     /// <inheritdoc />
     public event Action<string, CliRunEvent>? OnRunEvent;
 
-    /// <summary>Raise a typed run event, guarding subscriber exceptions.</summary>
-    protected void RaiseRunEvent(string runId, CliRunEvent evt)
+    private void RaiseRunEvent(string runId, CliRunEvent evt)
     {
         try { OnRunEvent?.Invoke(runId, evt); }
         catch (Exception ex) { Logger.LogWarning(ex, "OnRunEvent subscriber threw for {RunId}", runId); }
@@ -125,13 +103,8 @@ internal abstract class CliDriverBase : ICliDriver
         CliRunRequest request,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
-        // A pull-stream over the same event source: subscribe a private handler that
-        // funnels THIS run's events into an unbounded channel, then yield them. The
-        // run's terminal event (RunEnded) completes the channel.
         var runId = request.RunId;
 
-        // One pull-stream per run id — a second concurrent StreamAsync of the same run
-        // would double-consume its events. Reject it (push events still multiplex freely).
         if (!_streaming.TryAdd(runId, 0))
             throw new InvalidOperationException(
                 $"A StreamAsync is already active for run '{runId}'. Use OnRunEvent to fan out to multiple consumers.");
@@ -160,7 +133,7 @@ internal abstract class CliDriverBase : ICliDriver
         finally
         {
             OnRunEvent -= Funnel;
-            channel.Writer.TryComplete();        // on an early break the channel state matches reality
+            channel.Writer.TryComplete();
             _streaming.TryRemove(runId, out _);
             if (ct.IsCancellationRequested) Stop(runId, RunStopReason.UserStop);
         }
@@ -172,9 +145,12 @@ internal abstract class CliDriverBase : ICliDriver
     public bool IsAvailable() => TestCliPath().Available;
 
     /// <inheritdoc />
-    public virtual (bool Available, string? Version, string Path) TestCliPath(string? path = null)
+    public (bool Available, string? Version, string Path) TestCliPath(string? path = null)
     {
-        var target = string.IsNullOrWhiteSpace(path) ? GetCliPath() : path!;
+        // A CLI with a non-standard probe (e.g. Antigravity has no --version) supplies its own.
+        if (_descriptor.ProbeCliPath is { } probe) return probe(Options, path);
+
+        var target = string.IsNullOrWhiteSpace(path) ? _descriptor.GetCliPath(Options) : path!;
         string resolved;
         try { resolved = BinaryResolver.ResolveExecutable(target); }
         catch { resolved = target; }
@@ -201,54 +177,17 @@ internal abstract class CliDriverBase : ICliDriver
         }
     }
 
-    // ── Subclass hooks ──────────────────────────────────────────────────
+    // ── Test hook ───────────────────────────────────────────────────────
 
-    /// <summary>Build the CLI-specific <see cref="ProcessStartInfo"/> (FileName + ArgumentList).</summary>
-    protected abstract ProcessStartInfo BuildStartInfo(CliRunRequest request, string? model, string? thinkingLevel);
-
-    /// <summary>Test hook: build the start info exactly as <see cref="StartAsync"/> would (model + thinking normalized).</summary>
-    internal ProcessStartInfo BuildStartInfoForTest(CliRunRequest request)
+    /// <summary>Test hook: build the launch spec exactly as <see cref="StartAsync"/> would (model + thinking normalized).</summary>
+    internal LaunchSpec BuildLaunchForTest(CliRunRequest request)
     {
-        var model = NormalizeModelForInvocation(request.Model);
-        var thinking = CliThinkingLevels.Normalize(CliType, model, request.ThinkingLevel);
-        return BuildStartInfo(request, model, thinking);
+        var model = NormalizeModel(request.Model);
+        var thinking = CliThinkingLevels.Normalize(_descriptor.CliType, model, request.ThinkingLevel);
+        return _descriptor.BuildLaunch(new CliLaunchContext(request, _descriptor.GetCliPath(Options), model, thinking, Logger));
     }
 
-    /// <summary>Test hook: the stdin payload this driver would pipe for the request (model normalized).</summary>
-    internal string? BuildPromptStdinPayloadForTest(CliRunRequest request)
-        => GetPromptStdinPayload(request, NormalizeModelForInvocation(request.Model));
-
-    /// <summary>
-    /// The payload to pipe to the child's stdin, or null to leave stdin default-deny
-    /// (the prompt then lives in argv). Default: null.
-    /// </summary>
-    protected virtual string? GetPromptStdinPayload(CliRunRequest request, string? model) => null;
-
-    /// <summary>
-    /// Normalize a model id before it reaches argv. Default: trim / null-empty.
-    /// <para>An override MUST preserve enough of the id (family/version tokens) for
-    /// <see cref="CliThinkingLevels"/> to still recognize it — the normalized value is
-    /// also what resolves the reasoning ladder.</para>
-    /// </summary>
-    protected virtual string? NormalizeModelForInvocation(string? model)
-        => string.IsNullOrWhiteSpace(model) ? null : model.Trim();
-
-    /// <summary>
-    /// Map one raw stdout/stderr line to zero or more <see cref="CliRunEvent"/>s.
-    /// Default: nothing (a driver without an adapter rides the silence watchdog).
-    /// </summary>
-    protected virtual IEnumerable<CliRunEvent> MapLineToRunEvents(string runId, CliOutputLine line)
-        => Array.Empty<CliRunEvent>();
-
-    /// <summary>An optional pre-spawn health check / self-heal. Default: healthy.</summary>
-    protected virtual Task<(bool Ok, string? Error)> EnsureCliHealthyAsync(CancellationToken ct)
-        => Task.FromResult((true, (string?)null));
-
-    /// <summary>
-    /// Spawn the child. Default uses <see cref="Process"/> with redirected pipes;
-    /// PTY-based drivers override to keep a Node CLI's stdout line-flushing.
-    /// </summary>
-    protected virtual Task<ChildHandle> SpawnChildAsync(ProcessStartInfo psi, CliRunRequest request, string? model, CancellationToken ct)
+    private Task<ChildHandle> SpawnChildAsync(ProcessStartInfo psi)
     {
         // A consumer-injected spawner (e.g. a Windows PTY) takes over the launch; the
         // engine treats its result identically to the built-in pipe spawn.
@@ -271,7 +210,6 @@ internal abstract class CliDriverBase : ICliDriver
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        // Input validation (fail fast, clear error) before touching process state.
         if (string.IsNullOrWhiteSpace(request.RunId))
             return (null, "RunId must be a non-empty id, unique per live run.");
         if (string.IsNullOrWhiteSpace(request.WorkingDirectory) || !Directory.Exists(request.WorkingDirectory))
@@ -288,34 +226,44 @@ internal abstract class CliDriverBase : ICliDriver
             _processes.TryRemove(request.RunId, out _);
         }
 
-        var (healthy, healError) = await EnsureCliHealthyAsync(ct).ConfigureAwait(false);
-        if (!healthy)
+        if (_descriptor.EnsureHealthy is { } heal)
         {
-            Logger.LogError("Pre-spawn health check failed for {Cli} ({RunId}): {Error}", CliType, request.RunId, healError);
-            return (null, $"{CliType} CLI not available: {healError}");
+            var (healthy, healError) = await heal(new PreSpawnHealthContext(() => TestCliPath(), Logger), ct).ConfigureAwait(false);
+            if (!healthy)
+            {
+                Logger.LogError("Pre-spawn health check failed for {Cli} ({RunId}): {Error}", CliType, request.RunId, healError);
+                return (null, $"{CliType} CLI not available: {healError}");
+            }
         }
 
-        var model = NormalizeModelForInvocation(request.Model);
+        var model = NormalizeModel(request.Model);
         var thinking = CliThinkingLevels.Normalize(CliType, model, request.ThinkingLevel);
 
-        var psi = BuildStartInfo(request, model, thinking);
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-        psi.UseShellExecute = false;
-        psi.CreateNoWindow = true;
-        psi.WorkingDirectory = request.WorkingDirectory;
+        var launch = _descriptor.BuildLaunch(new CliLaunchContext(request, _descriptor.GetCliPath(Options), model, thinking, Logger));
 
-        var stdinPayload = GetPromptStdinPayload(request, model);
+        var psi = new ProcessStartInfo
+        {
+            FileName = launch.Executable,
+            WorkingDirectory = request.WorkingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        foreach (var a in launch.Argv) psi.ArgumentList.Add(a);
+
+        var stdinPayload = launch.StdinPayload;
         psi.RedirectStandardInput = !string.IsNullOrEmpty(stdinPayload);
 
         EnvironmentHardening.Apply(psi, Options.Hardening, Options.EnvironmentOverrides);
+        foreach (var kv in launch.EnvironmentOverrides) psi.Environment[kv.Key] = kv.Value;
         if (request.ExtraEnvironment is not null)
             foreach (var kv in request.ExtraEnvironment) psi.Environment[kv.Key] = kv.Value;
 
         CleanContextPreparation? cleanContext = null;
-        if (CliContextModes.Normalize(request.ContextMode) == CliContextModes.Clean && SupportsCleanContext)
+        if (CliContextModes.Normalize(request.ContextMode) == CliContextModes.Clean && _descriptor.CleanContext is { } cleanSpec)
         {
-            cleanContext = PrepareCleanContext(request.WorkingDirectory);
+            cleanContext = CleanContextPreparer.PrepareFromSpec(CliType, cleanSpec, Home.GetUserHome(), Logger);
             if (cleanContext != null)
             {
                 foreach (var kv in cleanContext.EnvOverrides) psi.Environment[kv.Key] = kv.Value;
@@ -328,7 +276,7 @@ internal abstract class CliDriverBase : ICliDriver
         ChildHandle child;
         try
         {
-            child = await SpawnChildAsync(psi, request, model, ct).ConfigureAwait(false);
+            child = await SpawnChildAsync(psi).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(stdinPayload))
             {
                 try
@@ -357,9 +305,6 @@ internal abstract class CliDriverBase : ICliDriver
             Status = "running",
             Model = model,
             ThinkingLevel = thinking,
-            // Surface the isolated clean-context home so a consumer can point its
-            // per-run side-channels (session-file liveness watcher) at the home the
-            // CLI actually writes to. Null for shared-context runs.
             CleanContextHome = cleanContext?.TempHome,
         };
 
@@ -382,8 +327,6 @@ internal abstract class CliDriverBase : ICliDriver
 
         Logger.LogInformation("Started {Cli} CLI for {RunId} (PID {Pid}) in {Cwd}", CliType, request.RunId, run.ProcessId, request.WorkingDirectory);
 
-        // Synthetic "started" line so a consumer's live view is not empty during the
-        // window between spawn and the CLI's first byte (claude -p buffers output).
         var startedLine = new CliOutputLine
         {
             Timestamp = DateTime.UtcNow,
@@ -408,6 +351,7 @@ internal abstract class CliDriverBase : ICliDriver
 
     private async Task ReadStreamAsync(string runId, StreamReader reader, string stream, ProcInfo info, CancellationToken ct)
     {
+        var streamKind = CliStreamKinds.Parse(stream);
         try
         {
             while (!ct.IsCancellationRequested)
@@ -421,12 +365,11 @@ internal abstract class CliDriverBase : ICliDriver
                 info.LastStreamedAt = DateTime.UtcNow;
 
                 IEnumerable<CliRunEvent>? events = null;
-                try { events = MapLineToRunEvents(runId, raw); }
-                catch (Exception ex) { Logger.LogWarning(ex, "MapLineToRunEvents threw for {RunId}; skipping typed events for this line", runId); }
+                try { events = _descriptor.Parse(raw.Text, runId, streamKind); }
+                catch (Exception ex) { Logger.LogWarning(ex, "descriptor.Parse threw for {RunId}; skipping typed events for this line", runId); }
                 if (events != null)
                     foreach (var evt in events)
                     {
-                        // Remember the last turn-failure so RunEnded.Reason can carry it on a Failed outcome.
                         if (evt is CliRunEvent.TurnFailed tf) info.LastFailureReason = tf.Reason;
                         RaiseRunEvent(runId, evt);
                     }
@@ -454,10 +397,6 @@ internal abstract class CliDriverBase : ICliDriver
             try { await process.WaitForExitAsync(ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { Stop(runId, RunStopReason.Cancelled); }
 
-            // Drain the read loops before finalizing: WaitForExitAsync returns as
-            // soon as the OS notices the child is gone, but the OS pipe still holds
-            // bytes the CLI wrote just before exit. Cap the wait so a stuck read
-            // cannot pin the exit.
             try
             {
                 await Task.WhenAll(info.StdoutReadTask ?? Task.CompletedTask, info.StderrReadTask ?? Task.CompletedTask)
@@ -478,10 +417,6 @@ internal abstract class CliDriverBase : ICliDriver
                 DurationSeconds = duration,
             };
 
-            // One run-terminal event, 3-valued. A subscriber tells a deliberate stop
-            // (Stopped) apart from a crash (Failed) without re-deriving it. Reason fills
-            // for Stopped (the stop reason) and Failed (the last turn-failure, else exit
-            // code). Either way OnFinished is the canonical "run is done".
             var reason = status switch
             {
                 RunOutcome.Stopped => info.StopReason.ToString(),
@@ -494,9 +429,6 @@ internal abstract class CliDriverBase : ICliDriver
             try { OnFinished?.Invoke(runId, info.Execution); }
             catch (Exception ex) { Logger.LogWarning(ex, "OnFinished subscriber threw for {RunId}", runId); }
 
-            // Release the per-run file handles now that streaming is done. The entry
-            // stays in _processes so GetExecution/GetOutput keep working post-exit
-            // (the persisted log is read statically from disk); call Forget to evict.
             try { info.OutputLog?.Dispose(); } catch { }
             info.CleanContext?.Dispose();
             info.CleanContext = null;
@@ -524,8 +456,6 @@ internal abstract class CliDriverBase : ICliDriver
         {
             if (!SafeHasExited(info.Process))
             {
-                // Record intent BEFORE the kill so the monitor's classifier can tell a
-                // deliberate stop apart from a real crash even if Kill races the exit.
                 info.StopReason = reason;
                 if (info.KillOverride != null)
                 {
@@ -567,16 +497,12 @@ internal abstract class CliDriverBase : ICliDriver
     {
         if (_processes.TryGetValue(runId, out var info))
             lock (info.OutputBuffer) return info.OutputBuffer.ToList();
-        // Fall back to the persisted log once the in-memory entry is gone.
         return RunLogStore.ReadMerged(LogPaths.GetRunLogDirectory(runId));
     }
 
     /// <inheritdoc />
     public CliRunInfo? GetExecution(string runId)
         => _processes.TryGetValue(runId, out var info) ? info.Execution : null;
-
-    /// <inheritdoc />
-    public virtual bool IsCompatibleSessionId(string? sessionId) => true;
 
     /// <inheritdoc />
     public bool Forget(string runId)
@@ -595,8 +521,6 @@ internal abstract class CliDriverBase : ICliDriver
 
         if (OperatingSystem.IsWindows())
         {
-            // taskkill /T reaps detached grandchildren that Process.Kill(true) can
-            // miss when a child re-parents (Node spawning build tooling, etc).
             try
             {
                 using var killer = Process.Start(new ProcessStartInfo
@@ -632,7 +556,6 @@ internal abstract class CliDriverBase : ICliDriver
     // Per-run mutable tracking state. Private implementation detail.
     private sealed class ProcInfo
     {
-        /// <summary>Create tracking state for a freshly spawned run.</summary>
         public ProcInfo(Process process, CliRunInfo execution, string workingDirectory)
         {
             Process = process;
@@ -640,31 +563,18 @@ internal abstract class CliDriverBase : ICliDriver
             WorkingDirectory = workingDirectory;
         }
 
-        /// <summary>The spawned process.</summary>
         public Process Process { get; }
-        /// <summary>The run info; re-stamped with the terminal status on exit.</summary>
         public CliRunInfo Execution { get; set; }
-        /// <summary>The working directory the run spawned in.</summary>
         public string WorkingDirectory { get; }
-        /// <summary>The live, capped output buffer (guard with its own lock).</summary>
         public List<CliOutputLine> OutputBuffer { get; } = [];
-        /// <summary>The durable per-stream output log.</summary>
         public RunLogStore OutputLog { get; init; } = null!;
-        /// <summary>The child's stdin stream, when one was captured.</summary>
         public Stream? ChildStdin { get; init; }
-        /// <summary>A PTY driver's own kill action, when present.</summary>
         public Action<RunStopReason>? KillOverride { get; init; }
-        /// <summary>The clean-context home to tear down on exit, when used.</summary>
         public CleanContextPreparation? CleanContext { get; set; }
-        /// <summary>Why the runner stopped the process; <see cref="RunStopReason.None"/> means it ended on its own.</summary>
         public RunStopReason StopReason { get; set; } = RunStopReason.None;
-        /// <summary>Last <see cref="CliRunEvent.TurnFailed"/> reason seen; fills <see cref="CliRunEvent.RunEnded"/>.Reason on a Failed outcome.</summary>
         public string? LastFailureReason { get; set; }
-        /// <summary>UTC instant of the last real streamed line (the silence-clock input).</summary>
         public DateTime LastStreamedAt { get; set; }
-        /// <summary>The stdout reader loop.</summary>
         public Task? StdoutReadTask { get; set; }
-        /// <summary>The stderr reader loop.</summary>
         public Task? StderrReadTask { get; set; }
     }
 }

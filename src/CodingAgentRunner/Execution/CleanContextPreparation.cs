@@ -116,6 +116,17 @@ internal static class CleanContextPreparer
         return Prepare(CliTypes.Codex, "CODEX_HOME", source, CodexSeedFiles, logger);
     }
 
+    /// <summary>
+    /// Build a clean context from a descriptor's <see cref="CleanContextSpec"/> — the
+    /// data-driven path the engine uses (the per-CLI recipe lives on the descriptor, the
+    /// mechanics here). The source dir is <c>{userHome}/{spec.SourceConfigDirName}</c>.
+    /// </summary>
+    public static CleanContextPreparation? PrepareFromSpec(string cliType, CleanContextSpec spec, string? userHome, ILogger? logger = null)
+    {
+        var source = string.IsNullOrWhiteSpace(userHome) ? null : Path.Combine(userHome, spec.SourceConfigDirName);
+        return Prepare(cliType, spec.EnvVar, source, spec.SeedFiles, logger);
+    }
+
     private static CleanContextPreparation? Prepare(
         string cliType,
         string envVar,
