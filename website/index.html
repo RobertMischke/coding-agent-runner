@@ -101,7 +101,6 @@
   .perf-table .perf-col-frame{width:13%;}
   .perf-table th:nth-child(6),.perf-table td:nth-child(6){white-space:nowrap;}
   .perf-table .source-tests{gap:4px;}
-  .perf-table .github-source-badge{font-size:9px;padding:2px 4px;}
   .scenario-cell{display:grid;gap:5px;}
   .scenario-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .scenario-title{font-weight:800;color:var(--fg);}
@@ -118,8 +117,7 @@
   .source-tests-label{color:var(--muted);margin-right:2px;}
   .source-tests a.github-source-link{display:inline-flex;align-items:center;gap:4px;color:var(--fg);font-weight:650;border:1px solid var(--line);border-radius:999px;background:#fff;padding:2px 6px;text-decoration:none;}
   .source-tests a.github-source-link:hover{border-color:#c8cfdb;background:#f7f9fc;}
-  .github-source-badge{font-size:10px;line-height:1;border-radius:999px;background:#eef1f5;color:#475467;padding:2px 5px;text-transform:uppercase;letter-spacing:.03em;}
-  .source-external-icon{width:10px;height:10px;color:var(--muted);flex:0 0 auto;}
+  .source-external-icon{width:11px;height:11px;color:var(--muted);flex:0 0 auto;}
   .perf-status{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:750;background:#eef1f5;color:var(--muted);}
   .perf-status.sample{background:#edf5ff;color:#1d4ed8;}
   .perf-status.measured{background:#e7f6ed;color:var(--ok);}
@@ -1477,7 +1475,7 @@ dotnet run -c Release --project benchmarks/CodingAgentRunner.Benchmarks -- --fil
   }
 
   function sourceLabel(testRef) {
-    return String(testRef.path || "").split("/").pop().replace(/Tests\.cs$/, "").replace(/\.cs$/, "");
+    return String(testRef.path || "").split("/").pop() || "source test";
   }
 
   function sourceTitle(group) {
@@ -1500,7 +1498,6 @@ dotnet run -c Release --project benchmarks/CodingAgentRunner.Benchmarks -- --fil
         return "<a class=\"github-source-link\" href=\"" + escapeHtml(sourceUrl(path)) + "\" target=\"_blank\" rel=\"noopener noreferrer\" title=\"" +
           escapeHtml(sourceTitle(group)) + "\" aria-label=\"Open " + escapeHtml(sourceLabel(group)) + " source test on GitHub\">" +
           "<span>" + escapeHtml(sourceLabel(group)) + "</span>" +
-          "<span class=\"github-source-badge\">GitHub</span>" +
           "<svg class=\"source-external-icon\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 4h6v6\"/><path d=\"m5 11 7-7\"/><path d=\"M12 12v1H3V4h1\"/></svg>" +
           "</a>";
       }).join("") +
