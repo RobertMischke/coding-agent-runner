@@ -100,12 +100,46 @@ public sealed class QuotaService
     /// <summary>
     /// Return every cached snapshot immediately, kicking off a background re-probe
     /// for any that is missing or past its <b>effective</b> (escalation-aware) TTL.
+    /// With a shared store (see <see cref="FileQuotaCacheStore.Global"/>), a stale
+    /// entry first re-reads the store: when another process refreshed the CLI in
+    /// the meantime, that snapshot is adopted instead of spending a probe.
     /// </summary>
     public QuotaReport GetWithBackgroundRefresh(CancellationToken ct = default)
     {
         foreach (var k in _probes.Keys)
-            if (IsStale(k)) _ = RefreshAsync(k, ct);
+            if (IsStale(k) && !TryAdoptFreshFromStore(k)) _ = RefreshAsync(k, ct);
         return GetCached();
+    }
+
+    /// <summary>
+    /// Re-read the store for one CLI and adopt its snapshot when it is fresher than
+    /// the in-memory one AND still within its effective TTL — the cross-process
+    /// half of a shared ("global") cache. Returns false when there is no store, no
+    /// stored snapshot, or the stored one is stale too (the caller then probes).
+    /// </summary>
+    private bool TryAdoptFreshFromStore(string cliType)
+    {
+        if (_store is null) return false;
+        try
+        {
+            var stored = _store.Read()
+                .FirstOrDefault(s => string.Equals(s.CliType, cliType, StringComparison.OrdinalIgnoreCase));
+            if (stored is null) return false;
+            if ((DateTime.UtcNow - stored.FetchedAt) > _options.EffectiveTtl(stored)) return false;
+
+            lock (_cacheLock)
+            {
+                if (_cache.TryGetValue(cliType, out var prior) && prior.FetchedAt >= stored.FetchedAt) return false;
+                _cache[cliType] = stored;
+            }
+            _logger.LogDebug("Adopted fresh {Cli} quota snapshot from the shared store (fetched {At:O}).", cliType, stored.FetchedAt);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Re-reading the quota store for {Cli} failed; probing instead", cliType);
+            return false;
+        }
     }
 
     /// <summary>Force a re-probe of every CLI and await all of them.</summary>

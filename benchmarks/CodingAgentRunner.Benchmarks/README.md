@@ -12,6 +12,12 @@ test validation, or the release gate.
   per output line for the whole length of a run.
 - **`UsageParsingBenchmarks`** — `UsageSummaryParser.Parse`, the per-turn usage line →
   token figures the metrics recorder folds in (once per `TurnCompleted`).
+- **`QuotaProbingBenchmarks`** — the quota hot paths: Claude usage-endpoint response →
+  snapshot, Codex rollout line → snapshot, the Codex probe's full sessions-directory
+  scan, the Codex `token_count` adapter path, the free event harvest
+  (`QuotaService.Observe`, once per `RateLimitObserved` in a live run), and one
+  shared-store read-merge-write round trip. The Claude probe's HTTP latency is out of
+  scope — these measure the library's own work.
 - **`RenderingBenchmarks`** — the optional `CodingAgentRunner.Rendering` package:
   Markdown → the span/line model, and a line → HTML (once per rendered message in a UI
   consumer; the core event-stream consumer never pays this).

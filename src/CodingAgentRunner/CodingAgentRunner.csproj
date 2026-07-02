@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="CodingAgentRunner.Tests" />
+    <InternalsVisibleTo Include="CodingAgentRunner.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
