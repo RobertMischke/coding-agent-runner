@@ -2,13 +2,23 @@
 
 > Run coding-agent CLIs — Claude Code, Codex, Antigravity, Gemini — from .NET: hardened spawning, streamed events, lifecycle, quota, metrics & optional rendering.
 
+[![NuGet](https://img.shields.io/nuget/v/CodingAgentRunner.svg?label=NuGet)](https://www.nuget.org/packages/CodingAgentRunner)
+[![NuGet downloads](https://img.shields.io/nuget/dt/CodingAgentRunner.svg?label=downloads)](https://www.nuget.org/packages/CodingAgentRunner)
+[![CI](https://github.com/RobertMischke/coding-agent-runner/actions/workflows/ci.yml/badge.svg)](https://github.com/RobertMischke/coding-agent-runner/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
+```bash
+dotnet add package CodingAgentRunner            # core: spawning, events, lifecycle, quota, metrics
+dotnet add package CodingAgentRunner.Rendering  # optional: Markdown/HTML rendering of agent output
+```
+
+Package pages: [CodingAgentRunner](https://www.nuget.org/packages/CodingAgentRunner) · [CodingAgentRunner.Rendering](https://www.nuget.org/packages/CodingAgentRunner.Rendering) · [GitHub releases](https://github.com/RobertMischke/coding-agent-runner/releases)
 
 **CodingAgentRunner** gives a .NET application an LLM on your local machine, using the coding-agent CLI you already sign in to — with no API keys. Run a single prompt, or a full multi-turn session. It launches and supervises terminal-native coding agents (Claude Code, OpenAI Codex, Google Antigravity / `agentapi`, and the legacy Gemini CLI) as child processes — reliably, especially on Windows.
 
 It is the process-and-protocol layer for those CLIs: it spawns the agent CLI with the right binary, environment, and isolation; normalizes its `stream-json` output — a different frame dialect per CLI — into one structured event vocabulary; classifies the run's outcome; enforces a *platform-owns-git* boundary; tracks remaining quota with a cache that polls more often as usage approaches the limit; records run metrics; and can render agent Markdown through an optional package. Unlike a general process wrapper such as [CliWrap](https://github.com/Tyrrrz/CliWrap), it is specialized to coding-agent CLIs — it parses their `stream-json` output and classifies the run's outcome.
 
-> **Status: core complete, pre-1.0.** Extracted and generalized from **Agent Studio**, a production multi-agent orchestrator that has processed hundreds of millions of tokens through these CLIs. The spawn engine, descriptor-driven CLI catalog, event contract, outcome model, quota module, metrics recorder and optional rendering package are implemented and tested (366 tests, CI on Windows + Linux). BenchmarkDotNet micro-benchmarks are available as an optional manual run. The public API may still shift before 1.0 — pin a version and watch releases.
+> **Status: core complete, pre-1.0.** Extracted and generalized from **Agent Studio**, a production multi-agent orchestrator that has processed hundreds of millions of tokens through these CLIs. The spawn engine, descriptor-driven CLI catalog, event contract, outcome model, quota module, metrics recorder and optional rendering package are implemented and tested (382 tests, CI on Windows + Linux). BenchmarkDotNet micro-benchmarks are available as an optional manual run. The public API may still shift before 1.0 — pin a version and watch releases.
 
 ## Why
 
@@ -58,6 +68,7 @@ Internally each CLI is a `CliDescriptor` — data plus a few pure delegates — 
 - ✅ Built-in silence watchdog (`RunWatchdog` / `WatchdogPolicy`) — one-line attach, phase-aware budgets.
 - ✅ Durable per-stream output logs (crash-tolerant, fsync per line).
 - ✅ Platform-owns-git guard (brand-neutral, configurable).
+- ✅ Environment diagnostics (`CliRunner.InspectEnvironment()`): which CLIs are installed and signed in, plus the install command and sign-in steps for anything missing — as data (`EnvironmentReport` / `CliSetup`) and as a renderable text report.
 - ✅ Quota cache · escalation · cap/gate · free event-harvest (poll harder near the limit; skip a run before it hits the wall).
 - ✅ Pluggable process spawner (`CliOptions.Spawner` / `ICliProcessSpawner`) — inject a custom launcher (e.g. a Windows PTY); null uses redirected pipes.
 - ✅ Run metrics from the event stream (`RunMetricsRecorder`) plus an optional `CodingAgentRunner.Rendering` package for Markdown/HTML UI output.
@@ -101,6 +112,35 @@ var (run, error) = await driver.StartAsync(new CliRunRequest
 // ... later, to stop a run on purpose (reported as 'stopped', not a crash):
 driver.Stop("task-1");
 ```
+
+### Prerequisites: the CLI must be installed and signed in
+
+The library runs CLIs you already have — it does not install or authenticate
+them. `InspectEnvironment()` reports what is missing and how to fix it:
+
+```csharp
+using CodingAgentRunner.Diagnostics;
+
+var report = new CliRunner().InspectEnvironment();
+if (!report.AnyReady)
+{
+    Console.WriteLine(report.ToText());
+    // claude      NOT INSTALLED (probed 'claude')
+    //             install: npm install -g @anthropic-ai/claude-code
+    //             NOT SIGNED IN — Run `claude` in a terminal; the first run opens a browser sign-in ...
+    //             docs: https://code.claude.com/docs/en/setup
+    // ...
+}
+
+// Programmatic, per CLI:
+CliEnvironmentStatus codex = report.For("codex")!;
+if (!codex.Installed) Console.WriteLine(codex.Setup.RecommendedInstallCommand);
+```
+
+The static setup knowledge (install commands, sign-in steps, headless/CI auth
+options, credential-file locations) is also available without probing anything,
+via `CliSetup.For("claude")`. See [docs/cli-setup.md](docs/cli-setup.md) for the
+per-CLI install and sign-in guide, including the non-interactive options.
 
 ### Quota with escalation caching
 
@@ -167,6 +207,7 @@ src/CodingAgentRunner/
   Model/                        value types, the run-outcome classifier, model catalog, CliCapabilities
   Events/                       CliRunEvent contract, phase machine, Interrupt + InterruptReason, watchdog
   Adapters/                     stream-json → CliRunEvent (Claude / Codex / Gemini; Antigravity reuses Gemini)
+  Diagnostics/                  InspectEnvironment report + per-CLI setup knowledge (CliSetup)
   Execution/                    CliRunEngine (one engine parameterized by CliDescriptor), CliCatalog,
                                 BuiltInDescriptors, LaunchSpec, hardening, clean-context, log stores, Win32 spawner
   Metrics/                      RunMetrics / TurnMetrics / RunMetricsRecorder / UsageSummaryParser
@@ -214,8 +255,11 @@ cached/cache-creation input tokens, output tokens, reasoning tokens and
 
 ## Releasing
 
-Releases are published to **nuget.org** by the `release` GitHub workflow when a
-`v*.*.*` tag is pushed; the package version is derived from the tag.
+Both packages (`CodingAgentRunner` and `CodingAgentRunner.Rendering`) are
+published to **nuget.org** by the `release` GitHub workflow when a `v*.*.*` tag
+is pushed; the package version is derived from the tag. The workflow also
+creates a **GitHub Release** for the tag, with generated notes, links to the
+nuget.org package pages, and the `.nupkg` files attached.
 
 ```bash
 scripts/release.sh 0.1.0      # validates, tests, tags v0.1.0, pushes the tag

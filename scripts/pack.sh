@@ -9,5 +9,6 @@ version_arg=()
 [[ -n "${1:-}" ]] && version_arg=(-p:Version="$1")
 
 dotnet pack src/CodingAgentRunner/CodingAgentRunner.csproj -c Release "${version_arg[@]}" -o artifacts
+dotnet pack src/CodingAgentRunner.Rendering/CodingAgentRunner.Rendering.csproj -c Release "${version_arg[@]}" -o artifacts
 echo "Packed into $root/artifacts:"
 ls -1 artifacts/*.nupkg 2>/dev/null || true

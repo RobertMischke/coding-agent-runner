@@ -229,6 +229,7 @@
         <div class="nav-menu-panel">
           <a href="#docs">Documentation</a>
           <a href="#quickstart">Quickstart</a>
+          <a href="#setup">Setup &amp; diagnostics</a>
           <a href="#identity">Run identity</a>
           <a href="#events">Event stream</a>
           <a href="#config">Configuration</a>
@@ -257,9 +258,12 @@
     <h1>Coding<span class="grad">AgentRunner</span></h1>
     <p class="tag">Give a .NET application an LLM on your local machine — using the coding-agent CLI you already sign in to, with <b>no API keys</b>. Run a single prompt, or a full multi-turn session.</p>
     <div class="btns">
-      <a class="btn primary" href="https://github.com/RobertMischke/coding-agent-runner">View on GitHub</a>
+      <a class="btn primary" href="https://www.nuget.org/packages/CodingAgentRunner">Get it on NuGet</a>
+      <a class="btn ghost" href="https://github.com/RobertMischke/coding-agent-runner">View on GitHub</a>
       <a class="btn ghost" href="#docs">Read the docs ↓</a>
     </div>
+    <p style="margin-top:16px;"><code>dotnet add package CodingAgentRunner</code>
+      <a href="https://www.nuget.org/packages/CodingAgentRunner" style="margin-left:10px;vertical-align:middle;"><img src="https://img.shields.io/nuget/v/CodingAgentRunner.svg?label=NuGet" alt="NuGet version" style="vertical-align:middle;"></a></p>
     <p class="provenance">Extracted from <b>Agent Studio</b>, a production multi-agent orchestrator that has processed hundreds of millions of tokens through these CLIs.</p>
   </div>
 </header>
@@ -421,6 +425,7 @@ driver.OnRunEvent += (runId, e) =&gt;
         <li><b>stream-json → typed event stream</b><span class="pill done">done</span></li>
         <li><b>Lifecycle: stop · reap · built-in watchdog</b><span class="pill done">done</span></li>
         <li><b>Push events &amp; pull <code>StreamAsync</code></b><span class="pill done">done</span></li>
+        <li><b>Environment diagnostics (<code>InspectEnvironment</code>): install + sign-in state, fixing commands</b><span class="pill done">done</span></li>
         <li><b>Quota cache · escalation · cap/gate</b><span class="pill done">done</span></li>
         <li><b>Pluggable process spawner (<code>CliOptions.Spawner</code>)</b><span class="pill done">done</span></li>
         <li><b>Run metrics from the event stream (<code>RunMetricsRecorder</code>)</b><span class="pill done">done</span></li>
@@ -432,7 +437,7 @@ driver.OnRunEvent += (runId, e) =&gt;
     </div>
     <div>
       <h2 id="status">Status</h2>
-      <div class="note">Stable core, pre-1.0. The spawn engine, descriptor-driven CLI catalog, event contract, outcome model, watchdog, quota module, metrics recorder and optional rendering package are implemented and tested (366 tests, CI on Windows + Linux). BenchmarkDotNet micro-benchmarks are available as an optional manual run. The public API may still shift before 1.0 — pin a version and watch releases.</div>
+      <div class="note">Stable core, pre-1.0. The spawn engine, descriptor-driven CLI catalog, event contract, outcome model, watchdog, quota module, metrics recorder and optional rendering package are implemented and tested (382 tests, CI on Windows + Linux). BenchmarkDotNet micro-benchmarks are available as an optional manual run. The public API may still shift before 1.0 — pin a version and watch releases.</div>
       <h2 id="license" style="margin-top:22px;">License</h2>
       <p class="lead">Apache-2.0. Issues and pull requests welcome on <a href="https://github.com/RobertMischke/coding-agent-runner">GitHub</a>.</p>
     </div>
@@ -557,6 +562,7 @@ dotnet run -c Release \
     <p class="lead">The public API is small: most run-control uses need five types — <code>CliRunner</code>, <code>CliOptions</code>, <code>CliRunRequest</code>, <code>CliRunInfo</code>, and <code>CliRunEvent</code>. Metrics and rendering are opt-in layers on top of the same event stream. Everything below is example-first and accurate to the current API.</p>
     <div class="docnav">
       <a href="#quickstart">Quickstart</a>
+      <a href="#setup">Setup &amp; diagnostics</a>
       <a href="#identity">Run identity</a>
       <a href="#events">Event stream</a>
       <a href="#config">Configuration</a>
@@ -602,6 +608,39 @@ dotnet run -c Release \
 
 <span class="k">var</span> (available, version, path) = runner.Get(<span class="s">"codex"</span>).TestCliPath();
 <span class="k">if</span> (runner.TryGet(userChoice, <span class="k">out var</span> chosen)) { <span class="c">/* … */</span> }</pre>
+
+    <h3 id="setup">CLI setup &amp; diagnostics</h3>
+    <p class="lead">The library runs CLIs that are already installed and signed in on the machine — it does not install or authenticate them. <code>InspectEnvironment()</code> reports what is missing and which commands fix it: per CLI the install state, the version, whether a credential source exists, and — as data (<code>CliSetupInfo</code>) — the install commands, sign-in steps and docs URL. It also checks Node.js/npm, which the npm-distributed CLIs need.</p>
+    <pre><span class="k">using</span> CodingAgentRunner.Diagnostics;
+
+<span class="k">var</span> report = runner.InspectEnvironment();
+<span class="k">if</span> (!report.AnyReady)
+    Console.WriteLine(report.ToText());          <span class="c">// per-CLI state + the fixing commands</span>
+
+CliEnvironmentStatus codex = report.For(<span class="s">"codex"</span>)!;
+<span class="k">if</span> (!codex.Installed)
+    logger.LogWarning(<span class="s">"Codex missing. Install: {Cmd}"</span>, codex.Setup.RecommendedInstallCommand);
+<span class="k">if</span> (codex.Credentials == CredentialSignal.NotFound)
+    logger.LogWarning(<span class="s">"Codex not signed in. {Step}"</span>, codex.Setup.LoginSteps[0]);</pre>
+
+    <p class="exlabel">What <code>ToText()</code> renders <span>— a machine with nothing installed</span></p>
+    <pre>claude      NOT INSTALLED (probed 'claude')
+            install: npm install -g @anthropic-ai/claude-code
+            NOT SIGNED IN — Run `claude` in a terminal; the first run opens a browser sign-in …
+            docs: https://code.claude.com/docs/en/setup
+…
+node        installed v24.18.0
+npm         installed 11.16.0</pre>
+
+    <p class="lead">Installing and signing in, per CLI. Installs are scriptable; the sign-in is a one-time browser flow per machine, with a non-interactive alternative for headless/CI setups. A credential probe reports a credential <em>source</em>, not a validated token — an expired login still fails at run time.</p>
+    <table>
+      <tr><th>Agent</th><th>Install (scriptable)</th><th>Sign in (once per machine)</th><th>Headless / CI</th></tr>
+      <tr><td>Claude Code</td><td><code>npm install -g @anthropic-ai/claude-code</code></td><td>run <code>claude</code>, browser sign-in</td><td><code>claude setup-token</code> → <code>CLAUDE_CODE_OAUTH_TOKEN</code>, or <code>ANTHROPIC_API_KEY</code></td></tr>
+      <tr><td>OpenAI Codex</td><td><code>npm install -g @openai/codex</code></td><td><code>codex login</code> (ChatGPT account)</td><td><code>codex login --device-auth</code> or <code>--with-api-key</code>, or copy <code>~/.codex/auth.json</code></td></tr>
+      <tr><td>Google Gemini</td><td><code>npm install -g @google/gemini-cli</code></td><td>run <code>gemini</code>, Google sign-in</td><td><code>GEMINI_API_KEY</code>, or a service account</td></tr>
+      <tr><td>Google Antigravity</td><td><code>irm https://antigravity.google/cli/install.ps1 | iex</code> (Windows) · <code>install.sh</code> (macOS/Linux)</td><td>run <code>agy</code> once (prints URL + code on headless)</td><td>no documented token export</td></tr>
+    </table>
+    <p class="lead">The full guide — credential file locations, seeding a login onto another machine, and why the library deliberately does not auto-install — is in <a href="https://github.com/RobertMischke/coding-agent-runner/blob/main/docs/cli-setup.md">docs/cli-setup.md</a>.</p>
 
     <h3 id="identity">Run identity: RunId, SessionId, continuation</h3>
     <p class="lead">Three ids, three jobs. You assign the <code>RunId</code>; the CLI assigns a <code>SessionId</code> (surfaced in a <code>SessionStarted</code> event); to continue a conversation you start a <em>new</em> run that carries the captured session id back as <code>ResumeSessionId</code>.</p>

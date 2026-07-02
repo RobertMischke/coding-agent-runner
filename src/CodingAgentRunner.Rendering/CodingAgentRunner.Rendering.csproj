@@ -9,6 +9,7 @@
     <PackageId>CodingAgentRunner.Rendering</PackageId>
     <Description>Optional, presentation-agnostic rendering for CodingAgentRunner: a span/line model plus a pluggable link resolver. The core library has NO dependency on this package; a consumer opts in.</Description>
     <PackageTags>dotnet;rendering;markdown;links;coding-agent;cli</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -22,6 +23,10 @@
   <!-- Markdown is parsed ONCE into the span model (the consumer then materializes spans). -->
   <ItemGroup>
     <PackageReference Include="Markdig" Version="0.37.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

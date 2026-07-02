@@ -152,6 +152,18 @@ a run before it hits the wall, and a free event-harvest (`Observe`) that keeps t
 cache warm from `RateLimitObserved` events. You supply the probe; the library does
 the caching, escalation, persistence, and cap check around it.
 
+### Environment diagnostics
+A small `CodingAgentRunner.Diagnostics` namespace (in the core package) answers
+"is this machine ready to run an agent CLI?". `CliRunner.InspectEnvironment()`
+probes each driver's CLI (`--version`), the known credential locations (a
+credential file under the user home, or the CLI's API-key env var), and the
+Node.js/npm runtime, and returns an `EnvironmentReport` — one
+`CliEnvironmentStatus` per CLI plus a `ToText()` rendering for logs/terminals.
+The static fix-it knowledge (install commands, sign-in steps, headless-auth
+options, docs URLs) ships as data in `CliSetup` / `CliSetupInfo`, available
+without probing anything. The library detects and explains; it does not install
+or authenticate a CLI. See [cli-setup.md](cli-setup.md).
+
 ### Run metrics
 A small `CodingAgentRunner.Metrics` namespace (in the core package) folds the event
 stream into a structured summary: `TurnMetrics` and `RunMetrics` records accumulated

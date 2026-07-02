@@ -1,7 +1,8 @@
 name: release
 
-# Publishes the package to nuget.org when a version tag is pushed (e.g. v0.1.0).
-# The version is derived from the tag.
+# Publishes both packages (CodingAgentRunner + CodingAgentRunner.Rendering) to
+# nuget.org when a version tag is pushed (e.g. v0.1.0), then creates a GitHub
+# Release for the tag. The version is derived from the tag.
 #
 # Auth uses nuget.org **Trusted Publishing** (OIDC): there is NO API key to store.
 # GitHub Actions mints a short-lived OIDC token; the NuGet/login action exchanges
@@ -20,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # required to request the OIDC token for Trusted Publishing
-      contents: read
+      contents: write   # required to create the GitHub Release for the tag
     steps:
       - uses: actions/checkout@v4
 
@@ -40,11 +41,15 @@ jobs:
         run: dotnet test --no-restore -c Release
 
       - name: Pack
-        run: >
-          dotnet pack src/CodingAgentRunner/CodingAgentRunner.csproj
-          --no-restore -c Release
-          -p:Version=${{ steps.ver.outputs.version }}
-          -o artifacts
+        run: |
+          dotnet pack src/CodingAgentRunner/CodingAgentRunner.csproj \
+            --no-restore -c Release \
+            -p:Version=${{ steps.ver.outputs.version }} \
+            -o artifacts
+          dotnet pack src/CodingAgentRunner.Rendering/CodingAgentRunner.Rendering.csproj \
+            --no-restore -c Release \
+            -p:Version=${{ steps.ver.outputs.version }} \
+            -o artifacts
 
       - name: Authenticate to nuget.org (Trusted Publishing / OIDC)
         id: login
@@ -58,3 +63,27 @@ jobs:
           --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
+
+      # A pushed tag alone does not appear on the GitHub Releases page. Create a
+      # Release for the tag that points at the published packages on nuget.org
+      # and carries the .nupkg files as downloadable assets.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          cat > release-notes.md <<EOF
+          Published to nuget.org:
+
+          - [CodingAgentRunner ${VERSION}](https://www.nuget.org/packages/CodingAgentRunner/${VERSION})
+          - [CodingAgentRunner.Rendering ${VERSION}](https://www.nuget.org/packages/CodingAgentRunner.Rendering/${VERSION})
+
+          \`\`\`
+          dotnet add package CodingAgentRunner --version ${VERSION}
+          \`\`\`
+          EOF
+          gh release create "${GITHUB_REF_NAME}" artifacts/*.nupkg \
+            --title "v${VERSION}" \
+            --notes-file release-notes.md \
+            --generate-notes \
+            --verify-tag

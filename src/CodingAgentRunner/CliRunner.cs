@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using CodingAgentRunner.Abstractions;
+using CodingAgentRunner.Diagnostics;
 using CodingAgentRunner.Execution;
 using CodingAgentRunner.Model;
 
@@ -27,6 +28,7 @@ namespace CodingAgentRunner;
 public sealed class CliRunner
 {
     private readonly Dictionary<string, ICliDriver> _drivers;
+    private readonly IUserHomeProvider _home;
 
     /// <summary>Build a runner with an engine for every built-in CLI sharing the given options/providers.</summary>
     public CliRunner(
@@ -36,9 +38,10 @@ public sealed class CliRunner
         IUserHomeProvider? home = null)
     {
         var catalog = BuiltInDescriptors.DefaultCatalog();
+        _home = home ?? new DefaultUserHomeProvider();
         _drivers = new Dictionary<string, ICliDriver>(StringComparer.OrdinalIgnoreCase);
         foreach (var type in catalog.Available)
-            _drivers[type] = new CliRunEngine(catalog.Get(type), options, logger, logPaths, home);
+            _drivers[type] = new CliRunEngine(catalog.Get(type), options, logger, logPaths, _home);
     }
 
     // ── Typed accessors (sugar over Get) — for code that statically knows the CLI ──
@@ -58,6 +61,17 @@ public sealed class CliRunner
 
     /// <summary>The drivers, one per supported CLI.</summary>
     public IReadOnlyCollection<ICliDriver> Drivers => _drivers.Values;
+
+    /// <summary>
+    /// Probe the machine: which CLIs are installed (via each driver's
+    /// <c>--version</c> probe), whether a credential source is present (credential
+    /// file or API-key env var), and whether Node.js/npm are available. The report
+    /// carries the install commands and sign-in steps for anything missing, and
+    /// <see cref="Diagnostics.EnvironmentReport.ToText"/> renders it for a log or
+    /// terminal. Blocking; probes run concurrently and each is bounded by an ~8 s
+    /// timeout, so a fully healthy machine answers in a few seconds.
+    /// </summary>
+    public EnvironmentReport InspectEnvironment() => EnvironmentInspector.Inspect(Drivers, _home);
 
     /// <summary>The CLI types this runner can resolve.</summary>
     public IReadOnlyCollection<string> SupportedCliTypes => _drivers.Keys;

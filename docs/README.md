@@ -6,6 +6,7 @@ code** so the institutional memory isn't lost during the extraction.
 ## Pages
 
 - **[Architecture](architecture.md)** — the modules, the public API (the `CliDescriptor` catalog, the event contract, the optional Rendering package, the Metrics namespace), and the abstractions the library leans on (logging, options, a home/path provider).
+- **[CLI setup](cli-setup.md)** — installing and signing in to the four CLIs, the `InspectEnvironment()` diagnostics report, and the headless/CI automation options.
 - **[Cross-CLI normalization](cross-cli-normalization.md)** — the same concept in three CLI dialects, the per-CLI frame table, the structural asymmetries the model absorbs, and the one `CliRunEvent` vocabulary the adapters fold them into.
 - **[Why Windows hardening](why-windows-hardening.md)** — the war stories behind each hardening behaviour, and why each ships with a test.
 - **[Process termination & abort handling](process-termination.md)** — the outcome model (`stopped` vs `completed` vs `failed`), the abort scenarios, process-tree reaping, and the watchdog.
