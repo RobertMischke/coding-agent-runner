@@ -1,4 +1,3 @@
-using CodingAgentRunner.Abstractions;
 using CodingAgentRunner.Model;
 using CodingAgentRunner.Quota;
 using Xunit;
@@ -18,12 +17,6 @@ public class GlobalQuotaCacheTests : IDisposable
 
     private string CachePath => Path.Combine(_dir, "quota-cache.json");
 
-    private sealed class FakeHome(string home) : IUserHomeProvider
-    {
-        public string GetUserHome() => home;
-        public string GetTempRoot() => Path.GetTempPath();
-    }
-
     private static QuotaSnapshot Snapshot(string cli, double usedPct, DateTime fetchedAt) => new()
     {
         CliType = cli,
@@ -32,20 +25,50 @@ public class GlobalQuotaCacheTests : IDisposable
         Source = "test",
     };
 
-    // ── Global path ─────────────────────────────────────────────────────
+    // ── Global path resolution ──────────────────────────────────────────
+
+    private static string? NoEnv(string _) => null;
 
     [Fact]
-    public void Global_store_lives_on_the_canonical_path_under_the_user_home()
+    public void Env_override_wins_over_the_os_native_location()
     {
-        var home = new FakeHome(_dir);
+        var path = FileQuotaCacheStore.ResolveGlobalPath(
+            name => name == "CODING_AGENT_RUNNER_CACHE_DIR" ? @"D:\mounted-cache" : null,
+            localAppDataDir: () => @"C:\Users\x\AppData\Local",
+            userHome: () => @"C:\Users\x");
 
-        Assert.Equal(
-            Path.Combine(_dir, ".coding-agent-runner", "quota-cache.json"),
-            FileQuotaCacheStore.GlobalPath(home));
+        Assert.Equal(Path.Combine(@"D:\mounted-cache", "quota-cache.json"), path);
+    }
 
-        var store = FileQuotaCacheStore.Global(home);
-        store.Write([Snapshot("claude", 10, DateTime.UtcNow)]);
-        Assert.True(File.Exists(FileQuotaCacheStore.GlobalPath(home)));
+    [Fact]
+    public void Default_is_the_os_native_per_user_app_data_dir()
+    {
+        var path = FileQuotaCacheStore.ResolveGlobalPath(
+            NoEnv,
+            localAppDataDir: () => @"C:\Users\x\AppData\Local",
+            userHome: () => @"C:\Users\x");
+
+        Assert.Equal(Path.Combine(@"C:\Users\x\AppData\Local", "coding-agent-runner", "quota-cache.json"), path);
+    }
+
+    [Fact]
+    public void Missing_app_data_dir_falls_back_to_a_dotdir_in_the_home()
+    {
+        var path = FileQuotaCacheStore.ResolveGlobalPath(
+            NoEnv,
+            localAppDataDir: () => "",   // platforms without a known app-data folder report empty
+            userHome: () => @"C:\Users\x");
+
+        Assert.Equal(Path.Combine(@"C:\Users\x", ".coding-agent-runner", "quota-cache.json"), path);
+    }
+
+    [Fact]
+    public void GlobalPath_resolves_to_a_writable_rooted_location()
+    {
+        var path = FileQuotaCacheStore.GlobalPath();
+
+        Assert.True(Path.IsPathRooted(path));
+        Assert.EndsWith("quota-cache.json", path);
     }
 
     // ── Merge-on-write ──────────────────────────────────────────────────

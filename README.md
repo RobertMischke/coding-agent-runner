@@ -18,7 +18,7 @@ Package pages: [CodingAgentRunner](https://www.nuget.org/packages/CodingAgentRun
 
 It is the process-and-protocol layer for those CLIs: it spawns the agent CLI with the right binary, environment, and isolation; normalizes its `stream-json` output — a different frame dialect per CLI — into one structured event vocabulary; classifies the run's outcome; enforces a *platform-owns-git* boundary; tracks remaining quota with a cache that polls more often as usage approaches the limit; records run metrics; and can render agent Markdown through an optional package. Unlike a general process wrapper such as [CliWrap](https://github.com/Tyrrrz/CliWrap), it is specialized to coding-agent CLIs — it parses their `stream-json` output and classifies the run's outcome.
 
-> **Status: core complete, pre-1.0.** Extracted and generalized from **Agent Studio**, a production multi-agent orchestrator that has processed hundreds of millions of tokens through these CLIs. The spawn engine, descriptor-driven CLI catalog, event contract, outcome model, quota module, metrics recorder and optional rendering package are implemented and tested (424 tests, CI on Windows + Linux). BenchmarkDotNet micro-benchmarks are available as an optional manual run. The public API may still shift before 1.0 — pin a version and watch releases.
+> **Status: core complete, pre-1.0.** Extracted and generalized from **Agent Studio**, a production multi-agent orchestrator that has processed hundreds of millions of tokens through these CLIs. The spawn engine, descriptor-driven CLI catalog, event contract, outcome model, quota module, metrics recorder and optional rendering package are implemented and tested (427 tests, CI on Windows + Linux). BenchmarkDotNet micro-benchmarks are available as an optional manual run. The public API may still shift before 1.0 — pin a version and watch releases.
 
 ## Why
 
@@ -164,10 +164,12 @@ var quota = new QuotaService(
 
 QuotaReport report = quota.GetWithBackgroundRefresh(); // cached now; refreshes stale entries in the background
 
-// Machine-global cache: every process that opts in shares one cache file
-// (~/.coding-agent-runner/quota-cache.json). A snapshot probed by one
-// application is adopted by the others instead of re-probing; concurrent
-// writers merge per CLI (freshest wins).
+// Shared per-user cache: every process that opts in shares one cache file in
+// the OS-native app-data dir (%LOCALAPPDATA%\coding-agent-runner on Windows,
+// ~/Library/Application Support on macOS, ~/.local/share on Linux; override
+// with CODING_AGENT_RUNNER_CACHE_DIR). A snapshot probed by one application
+// is adopted by the others instead of re-probing; concurrent writers merge
+// per CLI (freshest wins).
 var shared = new QuotaService(
     probes: [new ClaudeOAuthUsageProbe(), new CodexSessionLogProbe()],
     store: FileQuotaCacheStore.Global());

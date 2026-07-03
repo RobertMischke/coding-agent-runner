@@ -169,6 +169,14 @@ Two **built-in probes** ship with the library:
 Gemini is deprecated (no probe); Antigravity exposes no quota surface to probe
 today. The `IQuotaProbe` seam stays open for consumer-supplied probes.
 
+`FileQuotaCacheStore.Global()` gives every process of the user **one shared
+cache file** in the OS-native app-data location (`%LOCALAPPDATA%` / `~/Library/
+Application Support` / `~/.local/share`; `CODING_AGENT_RUNNER_CACHE_DIR`
+overrides it). Writes merge per CLI under a best-effort cross-process file lock
+(freshest `FetchedAt` wins), and a `QuotaService` whose entry went stale adopts
+a snapshot another process refreshed instead of spending a probe. Deliberately
+per-user, not per-machine — quota belongs to the signed-in CLI account.
+
 ### Environment diagnostics
 A small `CodingAgentRunner.Diagnostics` namespace (in the core package) answers
 "is this machine ready to run an agent CLI?". `CliRunner.InspectEnvironment()`

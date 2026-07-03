@@ -24,8 +24,8 @@ public interface IQuotaCacheStore
 /// corrupt file by starting empty.
 ///
 /// <para><b>Cross-process ("global") use.</b> <see cref="Global"/> returns a store
-/// on one machine-wide canonical path, so every process that opts in shares one
-/// cache: a snapshot probed by one application is picked up by the others (the
+/// on one per-user canonical path, so every process of this user that opts in
+/// shares one cache: a snapshot probed by one application is picked up by the others (the
 /// <see cref="QuotaService"/> adopts a fresh stored snapshot instead of
 /// re-probing). Writes MERGE with the file per CLI — the freshest
 /// <see cref="QuotaSnapshot.FetchedAt"/> wins — so concurrent processes refreshing
@@ -39,16 +39,43 @@ public sealed class FileQuotaCacheStore : IQuotaCacheStore
     private readonly object _writeLock = new();
 
     /// <summary>
-    /// The store on this machine's canonical shared path
-    /// (<c>~/.coding-agent-runner/quota-cache.json</c>) — one quota cache for every
-    /// process on the machine that opts in.
+    /// The store on this user's canonical shared path — one quota cache for every
+    /// process of this user that opts in. See <see cref="GlobalPath()"/> for where
+    /// the file lives per OS and how to override it.
     /// </summary>
-    public static FileQuotaCacheStore Global(IUserHomeProvider? home = null, ILogger? logger = null)
-        => new(GlobalPath(home), logger);
+    public static FileQuotaCacheStore Global(ILogger? logger = null)
+        => new(GlobalPath(), logger);
 
-    /// <summary>The canonical machine-wide cache path used by <see cref="Global"/>.</summary>
-    public static string GlobalPath(IUserHomeProvider? home = null)
-        => Path.Combine((home ?? new DefaultUserHomeProvider()).GetUserHome(), ".coding-agent-runner", "quota-cache.json");
+    /// <summary>
+    /// The canonical shared cache path used by <see cref="Global"/>: the
+    /// <c>CODING_AGENT_RUNNER_CACHE_DIR</c> environment variable when set
+    /// (containers/CI mount a volume there), else a <c>coding-agent-runner</c>
+    /// directory in the OS-native per-user app-data location —
+    /// <c>%LOCALAPPDATA%</c> on Windows, <c>~/Library/Application Support</c> on
+    /// macOS, <c>~/.local/share</c> (XDG) on Linux — falling back to
+    /// <c>~/.coding-agent-runner</c> when the platform reports none. Deliberately
+    /// per-user, not per-machine: quota belongs to the signed-in CLI account, and a
+    /// machine-wide file would mix (and leak) different users' usage.
+    /// </summary>
+    public static string GlobalPath()
+        => ResolveGlobalPath(
+            Environment.GetEnvironmentVariable,
+            static () => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            static () => new DefaultUserHomeProvider().GetUserHome());
+
+    /// <summary>Testable core of <see cref="GlobalPath()"/> — see there for the resolution order.</summary>
+    internal static string ResolveGlobalPath(
+        Func<string, string?> getEnv, Func<string> localAppDataDir, Func<string> userHome)
+    {
+        var envDir = getEnv("CODING_AGENT_RUNNER_CACHE_DIR");
+        if (!string.IsNullOrWhiteSpace(envDir))
+            return Path.Combine(envDir, "quota-cache.json");
+
+        var appData = localAppDataDir();
+        return string.IsNullOrWhiteSpace(appData)
+            ? Path.Combine(userHome(), ".coding-agent-runner", "quota-cache.json")
+            : Path.Combine(appData, "coding-agent-runner", "quota-cache.json");
+    }
 
     private static readonly JsonSerializerOptions WriteOpts = new()
     {
