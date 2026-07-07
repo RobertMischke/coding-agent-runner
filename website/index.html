@@ -4,7 +4,15 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>CodingAgentRunner — run coding-agent CLIs from your .NET app</title>
-<meta name="description" content="A .NET library that runs coding-agent CLIs (Claude Code, Codex, Antigravity, Gemini) as child processes — using the CLI you already sign in to, with no API keys. Typed event stream, lifecycle, quota, metrics, optional rendering, benchmarks and CLI performance observations." />
+<meta name="description" content="A .NET library that runs coding-agent CLIs (Claude Code, Codex, Antigravity, Gemini) as child processes — using the CLI you already sign in to, with no API keys. Typed event stream, lifecycle, quota, metrics, optional rendering, benchmarks and CLI performance observations. Runs on Windows and Linux." />
+<link rel="canonical" href="https://agent-orchestrator.dev/runner/" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6df6'/%3E%3Cpath d='M17 21l13 11-13 11' fill='none' stroke='%23fff' stroke-width='6.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M34 45h14' fill='none' stroke='%23fff' stroke-width='6.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://agent-orchestrator.dev/runner/" />
+<meta property="og:title" content="CodingAgentRunner — run coding-agent CLIs from your .NET app" />
+<meta property="og:description" content="A .NET library that runs coding-agent CLIs (Claude Code, Codex, Antigravity, Gemini) as child processes — using the CLI you already sign in to, with no API keys. Runs on Windows and Linux." />
+<meta property="og:site_name" content="Agent Orchestrator" />
+<meta name="twitter:card" content="summary" />
 <style>
   :root{
     --fg:#10151c;--muted:#5b6573;--line:#e6e9ee;--accent:#2f6df6;--accent2:#7c3aed;
@@ -254,7 +262,7 @@
 
 <header id="top" class="hero">
   <div class="wrap">
-    <span class="badge">.NET library · Apache-2.0 · stable core, pre-1.0</span>
+    <span class="badge">.NET library · Apache-2.0 · Windows + Linux · stable core, pre-1.0</span>
     <h1>Coding<span class="grad">AgentRunner</span></h1>
     <p class="tag">Give a .NET application an LLM on your local machine — using the coding-agent CLI you already sign in to, with <b>no API keys</b>. Run a single prompt, or a full multi-turn session.</p>
     <div class="btns">
@@ -403,10 +411,10 @@ driver.OnRunEvent += (runId, e) =&gt;
 <section id="windows">
   <div class="wrap">
     <h2>What it handles on Windows</h2>
-    <p class="lead">Running a CLI as a child process on Windows, unattended, has a handful of specific failure modes. The library handles each one, and each fix ships with a test that records why it exists.</p>
+    <p class="lead">CodingAgentRunner runs on Windows and Linux — both are exercised in CI and proven in production use. Windows is where running a CLI as an unattended child process has the most platform-specific failure modes. The library handles each one, and each fix ships with a test that records why it exists.</p>
     <div class="cards">
-      <div class="card"><h3><span class="dot"></span> Prompt delivery</h3><p>On Windows <code>claude</code>/<code>codex</code> often resolve to a <code>.cmd</code> shim; spawning it routes through <code>cmd.exe</code>, which truncates a multi-line prompt at the first newline. The runner resolves and launches the real <code>.exe</code>.</p></div>
-      <div class="card"><h3><span class="dot"></span> Platform owns git</h3><p>A soft rule in the agent's instructions keeps it from running <code>git commit</code>/<code>push</code>; an optional PATH-front <code>git</code> wrapper adds defence-in-depth. It is a safety net, not a sandbox.</p></div>
+      <div class="card"><h3><span class="dot"></span> Prompt delivery</h3><p>On Windows <code>claude</code>/<code>codex</code> often resolve to a <code>.cmd</code> shim; spawning it routes through <code>cmd.exe</code>, which truncates a multi-line prompt at the first newline. The runner resolves and launches the real <code>.exe</code>; on Linux the binaries resolve directly, so no shim handling is needed.</p></div>
+      <div class="card"><h3><span class="dot"></span> Platform owns git</h3><p>A soft rule in the agent's instructions keeps it from running <code>git commit</code>/<code>push</code>; an optional PATH-front <code>git</code> wrapper adds defense-in-depth. It is a safety net, not a sandbox.</p></div>
       <div class="card"><h3><span class="dot"></span> Clean-context</h3><p>Each run can get an isolated CLI home, so concurrent runs and your own interactive session do not collide. The repo's <code>AGENTS.md</code>/<code>CLAUDE.md</code> stay active in both modes.</p></div>
       <div class="card"><h3><span class="dot"></span> Real completion</h3><p>Completion comes from the CLI's own signal — the <code>stream-json</code> result frame plus process exit — not from scraping the output for a <code>[[TASK_DONE]]</code> marker.</p></div>
       <div class="card"><h3><span class="dot"></span> Honest outcomes</h3><p>A deliberate stop (user pause, watchdog) is reported as <em>stopped</em>, not as a <code>-1</code> crash — the distinction Windows' <code>Process.Kill</code> throws away.</p></div>
@@ -971,6 +979,7 @@ dotnet run -c Release --project benchmarks/CodingAgentRunner.Benchmarks -- --fil
 <footer>
   <div class="wrap">
     <p><b>CodingAgentRunner</b> · <a href="https://github.com/RobertMischke/coding-agent-runner">GitHub</a> · <a href="https://github.com/RobertMischke/coding-agent-runner/blob/main/LICENSE">Apache-2.0</a> · <a href="imprint.html">Imprint</a> · © 2026 Robert Mischke</p>
+    <p style="margin:8px 0 0;">Part of the <a href="https://agent-orchestrator.dev/">Agent Orchestrator</a> ecosystem.</p>
   </div>
 </footer>
 
