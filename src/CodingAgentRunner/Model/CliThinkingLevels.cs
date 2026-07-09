@@ -16,11 +16,18 @@ public static class CliThinkingLevels
     public const string High = "high";
     /// <summary>Extra-high reasoning effort (newer models only).</summary>
     public const string XHigh = "xhigh";
+    /// <summary>
+    /// Ultra reasoning effort — the top OpenAI/Codex rung, above <see cref="XHigh"/>
+    /// (newest Codex models only, e.g. the gpt-5.6 family). Server-validated by Codex.
+    /// </summary>
+    public const string Ultra = "ultra";
     /// <summary>Maximum reasoning effort (select Claude models only).</summary>
     public const string Max = "max";
 
     private static readonly IReadOnlyList<string> OpenAiLevels = [Minimal, Low, Medium, High];
     private static readonly IReadOnlyList<string> OpenAiXHighLevels = [Minimal, Low, Medium, High, XHigh];
+    // Ultra sits one rung above xhigh — the newest Codex families expose the full ladder.
+    private static readonly IReadOnlyList<string> OpenAiUltraLevels = [Minimal, Low, Medium, High, XHigh, Ultra];
     private static readonly IReadOnlyList<string> ClaudeBasicLevels = [Low, Medium, High];
     private static readonly IReadOnlyList<string> ClaudeMaxLevels = [Low, Medium, High, Max];
     private static readonly IReadOnlyList<string> ClaudeXHighMaxLevels = [Low, Medium, High, XHigh, Max];
@@ -34,6 +41,7 @@ public static class CliThinkingLevels
         if (string.Equals(cli, CliTypes.Codex, StringComparison.OrdinalIgnoreCase))
         {
             if (IsForeignCodexModel(m)) return [];
+            if (IsUltraCapableCodexModel(m)) return OpenAiUltraLevels;
             return IsXHighCapableCodexModel(m) ? OpenAiXHighLevels : OpenAiLevels;
         }
 
@@ -63,6 +71,22 @@ public static class CliThinkingLevels
 
         return [];
     }
+
+    /// <summary>
+    /// Short human label for a level id (for a UI ladder or probe response). Unknown
+    /// ids are echoed back trimmed so a new rung is never silently dropped from a UI.
+    /// </summary>
+    public static string DisplayName(string? level) => (level ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        Minimal => "Minimal",
+        Low => "Low",
+        Medium => "Medium",
+        High => "High",
+        XHigh => "Extra High",
+        Ultra => "Ultra",
+        Max => "Max",
+        _ => (level ?? string.Empty).Trim(),
+    };
 
     /// <summary>The default thinking level for the given CLI + model, or null when there is no selector.</summary>
     public static string? DefaultFor(string? cliType, string? model)
@@ -101,13 +125,28 @@ public static class CliThinkingLevels
     /// OpenAI models (gpt-5.5 and later). The codex <c>ReasoningEffort</c> enum
     /// serializes to lowercase, so the selector maps directly to
     /// <c>model_reasoning_effort="xhigh"</c>. Older codex models (gpt-5, gpt-5-codex)
-    /// top out at <c>high</c>.
+    /// top out at <c>high</c>. Every ultra-capable model is also xhigh-capable.
     /// </summary>
     private static bool IsXHighCapableCodexModel(string model)
     {
         var m = model.Replace('.', '-').ToLowerInvariant();
         return m.Contains("gpt-5-5", StringComparison.Ordinal)   // gpt-5.5
+               || IsUltraCapableCodexModel(model)                // gpt-5.6 family (also carries ultra)
                || m.Contains("gpt-6", StringComparison.Ordinal)
                || m.Contains("gpt-7", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Codex exposes the top <c>ultra</c> reasoning effort on its newest family, the
+    /// gpt-5.6 models. LIVE evidence (codex-cli 0.144.0): <c>gpt-5.6-sol</c> accepts
+    /// <c>model_reasoning_effort="ultra"</c> and rejects junk values server-side, so
+    /// ultra is a real rung above xhigh. The prefix match (normalized <c>gpt-5-6</c>)
+    /// covers <c>gpt-5.6-sol</c>, plain <c>gpt-5.6</c>, and future gpt-5.6 variants.
+    /// Older families stay xhigh-capped until there is evidence they accept ultra.
+    /// </summary>
+    private static bool IsUltraCapableCodexModel(string model)
+    {
+        var m = model.Replace('.', '-').ToLowerInvariant();
+        return m.Contains("gpt-5-6", StringComparison.Ordinal);  // gpt-5.6 family
     }
 }

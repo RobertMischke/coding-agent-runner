@@ -34,6 +34,48 @@ public class ThinkingLevelNormalizationTests
     }
 
     [Fact]
+    public void Codex_Ultra_KeptOnGpt56_ButGatedOnOlderModels()
+    {
+        // gpt-5.6 family accepts the new top rung.
+        Assert.Equal("ultra", CliThinkingLevels.Normalize("codex", "gpt-5.6-sol", "ultra"));
+        Assert.Equal("ultra", CliThinkingLevels.Normalize("codex", "gpt-5.6", "ultra"));
+        // Older codex models never see ultra: it falls back to their default (medium).
+        Assert.Equal("medium", CliThinkingLevels.Normalize("codex", "gpt-5.5", "ultra")); // xhigh-capable, not ultra
+        Assert.Equal("medium", CliThinkingLevels.Normalize("codex", "gpt-5", "ultra"));   // old model, gated
+    }
+
+    [Fact]
+    public void Codex_UltraLevel_EmitsReasoningEffortFlag()
+    {
+        // The whole point of the ladder change: ultra reaches the argv instead of
+        // silently falling back to the CLI config default.
+        var flags = CliReasoningFlags.For("codex", "gpt-5.6-sol", "ultra");
+        Assert.Equal(new[] { "-c", "model_reasoning_effort=\"ultra\"" }, flags);
+
+        // A gated model gets its default effort, never ultra.
+        Assert.DoesNotContain("model_reasoning_effort=\"ultra\"", CliReasoningFlags.For("codex", "gpt-5", "ultra"));
+    }
+
+    [Fact]
+    public void JunkLevel_OnNoSelectorModel_StaysNull_NoFlags()
+    {
+        // A model with no selector normalizes any request (junk or ultra) to null,
+        // so CliReasoningFlags emits nothing and the CLI default wins.
+        Assert.Null(CliThinkingLevels.Normalize("codex", "claude-opus-4-8", "ultra")); // foreign → no selector
+        Assert.Null(CliThinkingLevels.Normalize("claude", "claude-haiku-4-5", "banana"));
+        Assert.Empty(CliReasoningFlags.For("claude", "claude-haiku-4-5", "banana"));
+    }
+
+    [Fact]
+    public void UltraLevel_NeverLeaksIntoClaudeLadder()
+    {
+        // Ultra is a Codex-only rung; Claude tops out at max. A request for ultra on a
+        // full-ladder Claude model falls back to its default (high), never emits ultra.
+        Assert.Equal("high", CliThinkingLevels.Normalize("claude", "claude-opus-4-8", "ultra"));
+        Assert.DoesNotContain("ultra", CliThinkingLevels.For("claude", "claude-opus-4-8"));
+    }
+
+    [Fact]
     public void UnknownLevel_FallsBackToTheModelDefault()
     {
         Assert.Equal("high", CliThinkingLevels.Normalize("claude", "claude-opus-4-8", "ludicrous"));

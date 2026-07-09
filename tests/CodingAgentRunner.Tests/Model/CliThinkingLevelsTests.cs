@@ -34,6 +34,11 @@ public class CliThinkingLevelsTests
     [InlineData("gpt-5", "minimal,low,medium,high")]
     [InlineData("gpt-5-codex", "minimal,low,medium,high")]
     [InlineData("gpt-6", "minimal,low,medium,high,xhigh")]
+    // gpt-5.6 family → the full ladder up to ultra (LIVE codex-cli 0.144.0 evidence).
+    [InlineData("gpt-5.6-sol", "minimal,low,medium,high,xhigh,ultra")]
+    [InlineData("gpt-5.6", "minimal,low,medium,high,xhigh,ultra")]
+    [InlineData("gpt-5-6-sol", "minimal,low,medium,high,xhigh,ultra")]  // already dash-form
+    [InlineData("gpt-5.5-sol", "minimal,low,medium,high,xhigh")]        // 5.5 is xhigh, NOT ultra
     // Foreign models routed to codex → NO ladder, even with dots.
     [InlineData("claude-opus-4-8", "")]
     [InlineData("claude.opus.4.8", "")]                         // dots: still recognized as foreign (the fix)
@@ -46,6 +51,16 @@ public class CliThinkingLevelsTests
     {
         Assert.Empty(CliThinkingLevels.For("gemini", "gemini-pro"));
     }
+
+    [Theory]
+    [InlineData("minimal", "Minimal")]
+    [InlineData("xhigh", "Extra High")]
+    [InlineData("ultra", "Ultra")]
+    [InlineData("ULTRA", "Ultra")]     // case-insensitive
+    [InlineData("max", "Max")]
+    [InlineData("mystery", "mystery")] // unknown rung echoed back, never dropped
+    public void DisplayName_LabelsEachRung(string level, string expected)
+        => Assert.Equal(expected, CliThinkingLevels.DisplayName(level));
 
     [Fact]
     public void Normalize_IsIdempotent()
