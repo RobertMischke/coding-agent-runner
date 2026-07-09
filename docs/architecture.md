@@ -197,6 +197,17 @@ by `RunMetricsRecorder`, with token figures parsed by `UsageSummaryParser` from 
 wall-clock and output-tokens/sec are reconstructed from the events' timestamps — it
 records, it does not poll.
 
+### Pricing
+A small `CodingAgentRunner.Pricing` namespace (in the core package) is the one library of
+per-model API prices, with history, plus a pure cost API over it — so token-cost computations go
+through one deterministic source instead of a hardcoded table copied into each caller. A
+`ModelListing` holds a model's id, aliases, and a price *history*; each `ModelPrice` entry carries
+per-MTok input/output (and optional cache) rates and a `ValidFrom` UTC instant. `ModelPriceCatalog`
+resolves the price valid *at a run's timestamp* (`ResolvePrice`) and computes a per-component
+`CostBreakdown` (`ComputeCost`); `ModelPriceCatalog.Default` is the seeded catalog. Unknown and
+unpriced models are reported explicitly through `PriceStatus` (`UnknownModel` / `NoPriceForDate`)
+with a `null` total — never a silent zero. See [pricing.md](pricing.md).
+
 ### Optional: Rendering (separate package)
 `CodingAgentRunner.Rendering` is a separate, opt-in NuGet package — the core library
 has **no** dependency on it; the dependency points one way, Rendering → core. It maps
