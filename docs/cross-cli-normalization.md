@@ -27,7 +27,7 @@ an empty cell means that CLI has no such concept. The right column is the single
 | Plan / TODO update | `tool_use` `TodoWrite` | `item` `update_plan` | — | `PlanUpdated` |
 | Turn complete | `result`, `is_error=false` | `turn.completed` | `result`, `status=success` | `TurnCompleted` |
 | Turn error | `result`, `is_error=true` | `turn.failed`, `error.message` | `result`, `status!=success` | `TurnFailed` |
-| Typed diagnostic | stderr warning / helper-path / plugin-loader line | — | — | `Diagnostic` |
+| Typed diagnostic | — | stderr warning / helper-path / plugin-loader line | — | `Diagnostic` |
 | Token usage | `usage` `{ input_tokens, output_tokens, cache_read_input_tokens }` | `usage` `{ input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens }` | `stats` `{ input_tokens, output_tokens, cached }` | usage summary on `TurnCompleted` |
 | Rate limit | `rate_limit_event` (status + reset, no percent) | `token_count` `rate_limits` (core protocol / rollout logs, NOT the `exec --json` stream as of 0.142) — precise `used_percent` per window | — | `RateLimitObserved` (one per window; `UsedPercent` when the CLI reports one) |
 
