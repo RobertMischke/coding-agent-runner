@@ -63,16 +63,22 @@ public static class CodexEventAdapter
         }
 
         JsonDocument? doc = null;
+        var parseFailed = false;
         try { doc = JsonDocument.Parse(line); }
         catch
+        {
+            parseFailed = true;
+        }
+
+        if (parseFailed)
         {
             if (stream == CliStreamKind.Stderr)
                 yield return new CliRunEvent.Unknown(Truncate(line, 200) ?? "", line) { RunId = runId };
             yield break;
         }
 
-        using var _ = doc;
-        if (doc.RootElement.ValueKind != JsonValueKind.Object) yield break;
+        using var _ = doc!;
+        if (doc!.RootElement.ValueKind != JsonValueKind.Object) yield break;
 
         var root = doc.RootElement;
         var type = root.TryGetProperty("type", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null;
