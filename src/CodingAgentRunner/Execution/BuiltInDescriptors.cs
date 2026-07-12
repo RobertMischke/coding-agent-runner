@@ -90,7 +90,7 @@ internal static class BuiltInDescriptors
         CanResumeSessionId = static s => !string.IsNullOrWhiteSpace(s) && Uuid.IsMatch(s),
         InterruptClassifier = InterruptClassifiers.None,
         Liveness = LivenessSpec.InBandDefault,
-        Parse = (line, runId, stream) => stream == CliStreamKind.Stdout ? CodexEventAdapter.Map(line, runId) : Array.Empty<CliRunEvent>(),
+        Parse = (line, runId, stream) => stream is CliStreamKind.Stdout or CliStreamKind.Stderr ? CodexEventAdapter.Map(line, runId, stream) : Array.Empty<CliRunEvent>(),
         BuildLaunch = CodexLaunch,
     };
 

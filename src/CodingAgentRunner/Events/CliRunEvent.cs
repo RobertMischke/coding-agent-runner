@@ -74,6 +74,26 @@ public abstract record CliRunEvent
     public sealed record ApprovalRequested(string Description) : CliRunEvent;
 
     /// <summary>
+    /// A typed diagnostic emitted from stderr or another structured warning stream.
+    /// The fields stay presentation-agnostic so a caller can render, bucket, or
+    /// dedupe without re-parsing prose. <see cref="Count"/> and
+    /// <see cref="Plugins"/> let repeated diagnostics stay explicit.
+    /// </summary>
+    public sealed record Diagnostic : CliRunEvent
+    {
+        public DiagnosticSeverity Severity { get; init; }
+        public string Subsystem { get; init; } = "";
+        public string Code { get; init; } = "";
+        public string Category { get; init; } = "";
+        public string Summary { get; init; } = "";
+        public string? Remediation { get; init; }
+        public string RawDetail { get; init; } = "";
+        public string DedupeKey { get; init; } = "";
+        public int Count { get; init; } = 1;
+        public IReadOnlyList<string> Plugins { get; init; } = [];
+    }
+
+    /// <summary>
     /// Per-turn rate-limit info from CLIs that surface it (Claude's
     /// <c>rate_limit_event</c>, Codex's <c>rate_limits</c> payloads). Drives a live
     /// usage indicator, and <see cref="Quota.QuotaService.Observe"/> harvests it
@@ -128,8 +148,16 @@ public abstract record CliRunEvent
         int? ExitCode,
         double Duration) : CliRunEvent;
 
-    /// <summary>Adapter could not classify a chunk of output. <see cref="Sample"/> is a short prefix of the unclassified payload, capped to 200 chars.</summary>
-    public sealed record Unknown(string Sample) : CliRunEvent;
+    /// <summary>Adapter could not classify a chunk of output. <see cref="Sample"/> is a short prefix of the unclassified payload, capped to 200 chars; <see cref="RawDetail"/> keeps the full line lossless.</summary>
+    public sealed record Unknown(string Sample, string? RawDetail = null) : CliRunEvent;
+}
+
+/// <summary>Severity for <see cref="CliRunEvent.Diagnostic"/>.</summary>
+public enum DiagnosticSeverity
+{
+    Info,
+    Warning,
+    Error,
 }
 
 /// <summary>

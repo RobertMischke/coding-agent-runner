@@ -89,6 +89,13 @@ plus process exit (surfaced as `TurnCompleted` and the single terminal `RunEnded
 **not** from scraping a `[[TASK_DONE]]` sentinel, which is a fragile heuristic and
 stays in the consumer's run protocol, not here.
 
+Codex also preserves typed stderr diagnostics as `CliRunEvent.Diagnostic`
+records when a line matches one of the known helper-binary / PATH or
+plugin-loader warnings. The event keeps the severity, subsystem, stable code and
+category, summary, remediation, raw line, timestamp, dedupe key, and any plugin
+ids visible so consumers can group repeated warnings without re-parsing prose.
+Unknown stderr remains lossless via `CliRunEvent.Unknown.RawDetail`.
+
 ### Cross-CLI normalization
 The three CLIs speak the same ideas in different dialects: a session start is a
 `system` frame in Claude, a `thread.started` in Codex, an `init` in Antigravity; the

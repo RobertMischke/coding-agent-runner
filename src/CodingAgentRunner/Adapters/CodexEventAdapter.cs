@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CodingAgentRunner.Events;
+using CodingAgentRunner.Model;
 
 namespace CodingAgentRunner.Adapters;
 
@@ -34,14 +35,41 @@ namespace CodingAgentRunner.Adapters;
 /// </summary>
 public static class CodexEventAdapter
 {
-    /// <summary>Map one <c>codex exec --json</c> line to zero or more <see cref="CliRunEvent"/> instances.</summary>
-    public static IEnumerable<CliRunEvent> Map(string jsonLine, string runId)
+    private static readonly System.Text.RegularExpressions.Regex PluginIdRegex = new(
+        @"plugin=""(?<id>[^""]+)""",
+        System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Map one Codex output line to zero or more <see cref="CliRunEvent"/> instances. Structured JSON frames come from stdout; known stderr warnings become typed diagnostics.</summary>
+    public static IEnumerable<CliRunEvent> Map(string line, string runId, CliStreamKind stream = CliStreamKind.Stdout)
     {
-        if (string.IsNullOrWhiteSpace(jsonLine) || jsonLine[0] != '{') yield break;
+        if (TryMapDiagnostic(line, runId, stream, out var diagnostic))
+        {
+            yield return diagnostic;
+            yield break;
+        }
+
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            if (stream == CliStreamKind.Stderr)
+                yield return new CliRunEvent.Unknown("", line) { RunId = runId };
+            yield break;
+        }
+
+        if (line[0] != '{')
+        {
+            if (stream == CliStreamKind.Stderr)
+                yield return new CliRunEvent.Unknown(Truncate(line, 200) ?? "", line) { RunId = runId };
+            yield break;
+        }
 
         JsonDocument? doc = null;
-        try { doc = JsonDocument.Parse(jsonLine); }
-        catch { yield break; }
+        try { doc = JsonDocument.Parse(line); }
+        catch
+        {
+            if (stream == CliStreamKind.Stderr)
+                yield return new CliRunEvent.Unknown(Truncate(line, 200) ?? "", line) { RunId = runId };
+            yield break;
+        }
 
         using var _ = doc;
         if (doc.RootElement.ValueKind != JsonValueKind.Object) yield break;
@@ -125,9 +153,73 @@ public static class CodexEventAdapter
                 yield break;
             }
             default:
-                yield return new CliRunEvent.Unknown(Truncate(jsonLine, 200) ?? "") { RunId = runId };
+                yield return new CliRunEvent.Unknown(Truncate(line, 200) ?? "", line) { RunId = runId };
                 yield break;
         }
+    }
+
+    /// <summary>
+    /// Recognise Codex stderr warnings that should surface as typed diagnostics
+    /// instead of prose. The parser is deliberately conservative: only the known
+    /// helper-binary / PATH and plugin-loader warnings are typed here. Everything
+    /// else remains lossless through <see cref="CliRunEvent.Unknown"/>.
+    /// </summary>
+    private static bool TryMapDiagnostic(string line, string runId, CliStreamKind stream, out CliRunEvent evt)
+    {
+        evt = null!;
+        if (stream != CliStreamKind.Stderr || string.IsNullOrWhiteSpace(line))
+            return false;
+
+        var raw = line.Trim();
+        if (raw.IndexOf("plugin is not installed", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            var plugins = PluginIdRegex.Matches(raw)
+                .Select(m => m.Groups["id"].Value)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            evt = new CliRunEvent.Diagnostic
+            {
+                RunId = runId,
+                Severity = DiagnosticSeverity.Warning,
+                Subsystem = "plugin-loader",
+                Code = "codex.plugin.not-installed",
+                Category = "plugin-not-installed",
+                Summary = plugins.Length > 0
+                    ? $"Codex reported that plugin {string.Join(", ", plugins.Select(p => $"\"{p}\""))} is not installed"
+                    : "Codex reported that a plugin is not installed",
+                Remediation = "Reinstall or refresh the bundled plugin cache entry.",
+                RawDetail = raw,
+                DedupeKey = plugins.Length > 0
+                    ? $"codex.plugin.not-installed|{string.Join("|", plugins)}"
+                    : "codex.plugin.not-installed",
+                Plugins = plugins,
+            };
+            return true;
+        }
+
+        if (raw.IndexOf("helper paths are unavailable", StringComparison.OrdinalIgnoreCase) >= 0
+            || raw.IndexOf("helper path is unavailable", StringComparison.OrdinalIgnoreCase) >= 0
+            || raw.IndexOf("helper binary", StringComparison.OrdinalIgnoreCase) >= 0
+            || raw.IndexOf("path alias", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            evt = new CliRunEvent.Diagnostic
+            {
+                RunId = runId,
+                Severity = DiagnosticSeverity.Warning,
+                Subsystem = "path",
+                Code = "codex.path.helper-binary",
+                Category = "path-helper-binary",
+                Summary = "Codex could not resolve a helper binary or PATH alias.",
+                Remediation = "Repair the bundled helper install or fix PATH so Codex resolves the expected executable.",
+                RawDetail = raw,
+                DedupeKey = "codex.path.helper-binary",
+            };
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>

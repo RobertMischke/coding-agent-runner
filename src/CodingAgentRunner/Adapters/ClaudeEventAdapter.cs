@@ -162,7 +162,7 @@ public static class ClaudeEventAdapter
             }
             default:
             {
-                yield return new CliRunEvent.Unknown(Truncate(jsonLine, 200)) { RunId = runId };
+                yield return new CliRunEvent.Unknown(Truncate(jsonLine, 200), jsonLine) { RunId = runId };
                 yield break;
             }
         }

@@ -27,6 +27,7 @@ an empty cell means that CLI has no such concept. The right column is the single
 | Plan / TODO update | `tool_use` `TodoWrite` | `item` `update_plan` | — | `PlanUpdated` |
 | Turn complete | `result`, `is_error=false` | `turn.completed` | `result`, `status=success` | `TurnCompleted` |
 | Turn error | `result`, `is_error=true` | `turn.failed`, `error.message` | `result`, `status!=success` | `TurnFailed` |
+| Typed diagnostic | stderr warning / helper-path / plugin-loader line | — | — | `Diagnostic` |
 | Token usage | `usage` `{ input_tokens, output_tokens, cache_read_input_tokens }` | `usage` `{ input_tokens, cached_input_tokens, output_tokens, reasoning_output_tokens }` | `stats` `{ input_tokens, output_tokens, cached }` | usage summary on `TurnCompleted` |
 | Rate limit | `rate_limit_event` (status + reset, no percent) | `token_count` `rate_limits` (core protocol / rollout logs, NOT the `exec --json` stream as of 0.142) — precise `used_percent` per window | — | `RateLimitObserved` (one per window; `UsedPercent` when the CLI reports one) |
 
@@ -63,12 +64,13 @@ case by case:
 
 `CliRunEvent` is a **closed sum type** — a fixed set of `record` cases
 (`RunStarted`, `SessionStarted`, `OutputDelta`, `ToolStarted`, `ToolCompleted`,
-`PlanUpdated`, `Heartbeat`, `TurnCompleted`, `TurnFailed`, `RateLimitObserved`,
+`PlanUpdated`, `Heartbeat`, `Diagnostic`, `TurnCompleted`, `TurnFailed`, `RateLimitObserved`,
 `Interrupt`, `RunEnded`, `Unknown`, …), not an open string-keyed bag. A `switch` over
 it is checked for exhaustiveness by the compiler, so adding a case turns into a
 build error at every consumption site rather than a silent fallback. A frame the
 adapter does not recognize becomes `CliRunEvent.Unknown` with a capped sample of the
-raw line — unrecognized input is surfaced, never silently dropped.
+raw line and the full raw detail — unrecognized input is surfaced, never silently
+dropped.
 
 ## Two projections, both from the library
 

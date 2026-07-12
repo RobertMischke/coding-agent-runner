@@ -46,6 +46,7 @@ public static class RunPhaseTransitions
         CliRunEvent.NeedsInput          => RunPhase.NeedsInput,
         CliRunEvent.ApprovalRequested   => RunPhase.NeedsInput,
         CliRunEvent.RateLimitObserved   => current,
+        CliRunEvent.Diagnostic          => current,
         CliRunEvent.QuotaWaitStarted    => current,
         CliRunEvent.QuotaWaitEnded      => current,
         CliRunEvent.RunEnded e          => e.Outcome == Model.RunOutcome.Stopped ? RunPhase.Killed : RunPhase.Exited,
@@ -71,6 +72,7 @@ public static class RunPhaseTransitions
         CliRunEvent.ToolCompleted     => true,
         CliRunEvent.Heartbeat         => true,
         CliRunEvent.RateLimitObserved => true,
+        CliRunEvent.Diagnostic        => true,
         CliRunEvent.SessionStarted    => true,
         CliRunEvent.TurnStarted       => true,
         // An `Unknown` frame is still output: the CLI wrote *something* to stdout
