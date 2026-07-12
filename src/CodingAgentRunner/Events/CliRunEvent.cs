@@ -81,15 +81,25 @@ public abstract record CliRunEvent
     /// </summary>
     public sealed record Diagnostic : CliRunEvent
     {
+        /// <summary>How urgently the consumer should surface the diagnostic.</summary>
         public DiagnosticSeverity Severity { get; init; }
+        /// <summary>Stable component name that produced the diagnostic.</summary>
         public string Subsystem { get; init; } = "";
+        /// <summary>Stable machine-readable diagnostic identifier.</summary>
         public string Code { get; init; } = "";
+        /// <summary>Stable grouping category, which may be broader than <see cref="Code"/>.</summary>
         public string Category { get; init; } = "";
+        /// <summary>Short presentation-neutral description.</summary>
         public string Summary { get; init; } = "";
+        /// <summary>Optional action that can resolve the condition.</summary>
         public string? Remediation { get; init; }
+        /// <summary>The complete source line, without truncation.</summary>
         public string RawDetail { get; init; } = "";
+        /// <summary>Stable key used to coalesce equivalent occurrences.</summary>
         public string DedupeKey { get; init; } = "";
+        /// <summary>Number of occurrences represented by this event.</summary>
         public int Count { get; init; } = 1;
+        /// <summary>Distinct plugin ids represented by this event.</summary>
         public IReadOnlyList<string> Plugins { get; init; } = [];
     }
 
@@ -155,8 +165,11 @@ public abstract record CliRunEvent
 /// <summary>Severity for <see cref="CliRunEvent.Diagnostic"/>.</summary>
 public enum DiagnosticSeverity
 {
+    /// <summary>Informational context; no corrective action is normally required.</summary>
     Info,
+    /// <summary>A recoverable condition that may need corrective action.</summary>
     Warning,
+    /// <summary>A condition that prevented the subsystem from operating.</summary>
     Error,
 }
 

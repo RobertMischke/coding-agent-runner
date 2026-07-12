@@ -72,6 +72,10 @@ adapter does not recognize becomes `CliRunEvent.Unknown` with a capped sample of
 raw line and the full raw detail — unrecognized input is surfaced, never silently
 dropped.
 
+Repeated diagnostics can be folded with `DiagnosticCoalescer.Coalesce`. It groups
+by `DedupeKey`, sums `Count`, unions plugin ids, and retains every distinct raw
+detail. The adapter remains stateless and emits each observation as it arrives.
+
 ## Two projections, both from the library
 
 The same parse feeds two shipped projections, so you consume whichever fits the job:

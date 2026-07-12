@@ -40,7 +40,11 @@ public static class CodexEventAdapter
         System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     /// <summary>Map one Codex output line to zero or more <see cref="CliRunEvent"/> instances. Structured JSON frames come from stdout; known stderr warnings become typed diagnostics.</summary>
-    public static IEnumerable<CliRunEvent> Map(string line, string runId, CliStreamKind stream = CliStreamKind.Stdout)
+    public static IEnumerable<CliRunEvent> Map(string line, string runId)
+        => Map(line, runId, CliStreamKind.Stdout);
+
+    /// <summary>Map one Codex output line, preserving which process stream produced it.</summary>
+    public static IEnumerable<CliRunEvent> Map(string line, string runId, CliStreamKind stream)
     {
         if (TryMapDiagnostic(line, runId, stream, out var diagnostic))
         {
@@ -177,6 +181,7 @@ public static class CodexEventAdapter
             return false;
 
         var raw = line.Trim();
+        var observedAt = TryReadTimestamp(raw);
         if (raw.IndexOf("plugin is not installed", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             var plugins = PluginIdRegex.Matches(raw)
@@ -188,6 +193,7 @@ public static class CodexEventAdapter
             evt = new CliRunEvent.Diagnostic
             {
                 RunId = runId,
+                ObservedAt = observedAt,
                 Severity = DiagnosticSeverity.Warning,
                 Subsystem = "plugin-loader",
                 Code = "codex.plugin.not-installed",
@@ -213,6 +219,7 @@ public static class CodexEventAdapter
             evt = new CliRunEvent.Diagnostic
             {
                 RunId = runId,
+                ObservedAt = observedAt,
                 Severity = DiagnosticSeverity.Warning,
                 Subsystem = "path",
                 Code = "codex.path.helper-binary",
@@ -226,6 +233,16 @@ public static class CodexEventAdapter
         }
 
         return false;
+    }
+
+    private static DateTime TryReadTimestamp(string raw)
+    {
+        var separator = raw.IndexOf(' ');
+        if (separator > 0
+            && DateTimeOffset.TryParse(raw[..separator], System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var timestamp))
+            return timestamp.UtcDateTime;
+        return DateTime.UtcNow;
     }
 
     /// <summary>

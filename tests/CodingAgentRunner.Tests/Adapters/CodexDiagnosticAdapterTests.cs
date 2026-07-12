@@ -54,6 +54,29 @@ public sealed class CodexDiagnosticAdapterTests
     }
 
     [Fact]
+    public void Timestamped_warning_preserves_the_source_timestamp()
+    {
+        const string line = "2026-06-01T07:39:35.374Z warning [computer-use-native-pipe] helper paths are unavailable";
+        var diagnostic = Assert.IsType<CliRunEvent.Diagnostic>(Assert.Single(
+            CodexEventAdapter.Map(line, "run-1", CliStreamKind.Stderr)));
+
+        Assert.Equal(new DateTime(2026, 6, 1, 7, 39, 35, 374, DateTimeKind.Utc), diagnostic.ObservedAt);
+    }
+
+    [Fact]
+    public void Repeated_diagnostics_coalesce_without_hiding_count_plugins_or_detail()
+    {
+        var first = new CliRunEvent.Diagnostic { DedupeKey = "plugin", Count = 1, Plugins = ["a"], RawDetail = "first" };
+        var second = new CliRunEvent.Diagnostic { DedupeKey = "plugin", Count = 2, Plugins = ["a", "b"], RawDetail = "second" };
+
+        var diagnostic = Assert.Single(DiagnosticCoalescer.Coalesce([first, second]));
+
+        Assert.Equal(3, diagnostic.Count);
+        Assert.Equal(["a", "b"], diagnostic.Plugins);
+        Assert.Equal($"first{Environment.NewLine}second", diagnostic.RawDetail);
+    }
+
+    [Fact]
     public void Unknown_stderr_keeps_the_full_line_lossless()
     {
         const string line = "2026-06-01T07:39:35.374Z warning [codex] unclassified stderr payload with a long tail";
@@ -73,6 +96,6 @@ public sealed class CodexDiagnosticAdapterTests
 
         var completed = Assert.IsType<CliRunEvent.TurnCompleted>(
             Assert.Single(CodexEventAdapter.Map("""{"type":"turn.completed","usage":{"input_tokens":12,"output_tokens":34}}""", "run-1").ToList()));
-        Assert.Equal("input=12 output=34 cache_read=0", completed.UsageSummary);
+        Assert.Equal("input=12 cached=0 output=34 reasoning=0", completed.UsageSummary);
     }
 }
