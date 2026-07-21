@@ -6,78 +6,105 @@
 <title>CodingAgentRunner — run coding-agent CLIs from your .NET app</title>
 <meta name="description" content="A .NET library that runs coding-agent CLIs (Claude Code, Codex, Antigravity, Gemini) as child processes — using the CLI you already sign in to, with no API keys. Typed event stream, lifecycle, quota, metrics, optional rendering, benchmarks and CLI performance observations. Runs on Windows and Linux." />
 <link rel="canonical" href="https://agent-orchestrator.dev/runner/" />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f6df6'/%3E%3Cpath d='M17 21l13 11-13 11' fill='none' stroke='%23fff' stroke-width='6.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M34 45h14' fill='none' stroke='%23fff' stroke-width='6.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232c50d0'/%3E%3Cpath d='M17 21l13 11-13 11' fill='none' stroke='%23fff' stroke-width='6.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M34 45h14' fill='none' stroke='%23fff' stroke-width='6.5' stroke-linecap='round'/%3E%3C/svg%3E" />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://agent-orchestrator.dev/runner/" />
 <meta property="og:title" content="CodingAgentRunner — run coding-agent CLIs from your .NET app" />
 <meta property="og:description" content="A .NET library that runs coding-agent CLIs (Claude Code, Codex, Antigravity, Gemini) as child processes — using the CLI you already sign in to, with no API keys. Runs on Windows and Linux." />
 <meta property="og:site_name" content="Agent Orchestrator" />
 <meta name="twitter:card" content="summary" />
+<link rel="preload" href="fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
+<link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
 <style>
+  /* Self-hosted fonts (SIL OFL 1.1, see fonts/LICENSE.txt) — no third-party requests. */
+  @font-face{font-family:'Inter';font-style:normal;font-weight:400 800;font-display:swap;src:url(fonts/inter-latin.woff2) format('woff2');}
+  @font-face{font-family:'Space Grotesk';font-style:normal;font-weight:500 700;font-display:swap;src:url(fonts/space-grotesk-latin.woff2) format('woff2');}
+  @font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/jetbrains-mono-latin.woff2) format('woff2');}
   :root{
-    --fg:#10151c;--muted:#5b6573;--line:#e6e9ee;--accent:#2f6df6;--accent2:#7c3aed;
-    --bg:#fbfcfe;--card:#fff;--code:#0f1115;--codefg:#e6e9ef;--ok:#067647;--warn:#b54708;
+    --fg:#0e1320;--muted:#525e70;--line:#e4e8f0;
+    --accent:#2c50d0;--accent2:#8b5cf6;--accent3:#db2777;
+    --teal:#0d9488;--amber:#d97706;--sky:#0284c7;
+    --bg:#fafbff;--card:#fff;--code:#0d1022;--codefg:#e8eaf6;--ok:#067647;--warn:#b54708;
+    --sans:'Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --display:'Space Grotesk','Inter',-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
   }
   *{box-sizing:border-box;}
   html{scroll-behavior:smooth;}
-  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 var(--sans);-webkit-font-smoothing:antialiased;}
+  ::selection{background:#c9d4f8;}
   a{color:var(--accent);text-decoration:none;} a:hover{text-decoration:underline;}
   .wrap{max-width:980px;margin:0 auto;padding:0 22px;}
-  code{background:#eef1f5;padding:1px 6px;border-radius:5px;font:13px/1.5 ui-monospace,Consolas,monospace;}
-  pre{background:var(--code);color:var(--codefg);padding:16px 18px;border-radius:12px;overflow:auto;font:13px/1.6 ui-monospace,Consolas,monospace;}
+  code{background:#edeffb;padding:1px 6px;border-radius:5px;font:12.5px/1.5 var(--mono);}
+  pre{background:var(--code);color:var(--codefg);padding:16px 18px;border-radius:12px;overflow:auto;font:12.5px/1.65 var(--mono);}
   pre code{background:none;padding:0;}
-  pre .c{color:#7f8a9b;} pre .k{color:#79b8ff;} pre .s{color:#9ecbff;} pre .t{color:#c8a8ff;}
+  pre .c{color:#7c87ad;} pre .k{color:#93b4ff;} pre .s{color:#7fe0c3;} pre .t{color:#c8a8ff;}
   /* top navigation */
-  .site-nav{position:sticky;top:0;z-index:20;background:rgba(251,252,254,.94);border-bottom:1px solid var(--line);backdrop-filter:saturate(140%) blur(10px);}
+  .site-nav{position:sticky;top:0;z-index:20;background:rgba(250,251,255,.92);border-bottom:1px solid var(--line);backdrop-filter:saturate(140%) blur(10px);}
   .site-nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-top:10px;padding-bottom:10px;}
-  .brand{font-weight:800;color:var(--fg);letter-spacing:0;font-size:15px;}
+  .brand{font-family:var(--display);font-weight:700;color:var(--fg);letter-spacing:0;font-size:15.5px;}
   .brand:hover{text-decoration:none;color:var(--fg);}
   .nav-links{display:flex;align-items:center;justify-content:flex-end;gap:4px;flex-wrap:wrap;}
   .nav-links a{color:var(--muted);font-size:13px;font-weight:650;padding:5px 8px;border-radius:7px;}
-  .nav-links a:hover{background:#eef1f5;color:var(--fg);text-decoration:none;}
-  .nav-links a.is-active{background:#e8f0ff;color:var(--accent);box-shadow:inset 0 0 0 1px #c9dcff;text-decoration:none;}
+  .nav-links a:hover{background:#eef0fa;color:var(--fg);text-decoration:none;}
+  .nav-links a.is-active{background:#e8edfc;color:var(--accent);box-shadow:inset 0 0 0 1px #c6d2f7;text-decoration:none;}
   .nav-menu{position:relative;}
   .nav-menu summary{list-style:none;cursor:pointer;color:var(--muted);font-size:13px;font-weight:650;padding:5px 22px 5px 8px;border-radius:7px;position:relative;}
   .nav-menu summary::-webkit-details-marker{display:none;}
   .nav-menu summary:after{content:"";position:absolute;right:8px;top:50%;width:6px;height:6px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:translateY(-65%) rotate(45deg);}
   .nav-menu[open] summary:after{transform:translateY(-35%) rotate(225deg);}
-  .nav-menu summary:hover,.nav-menu[open] summary{background:#eef1f5;color:var(--fg);}
-  .nav-menu.is-active summary{background:#e8f0ff;color:var(--accent);box-shadow:inset 0 0 0 1px #c9dcff;}
+  .nav-menu summary:hover,.nav-menu[open] summary{background:#eef0fa;color:var(--fg);}
+  .nav-menu.is-active summary{background:#e8edfc;color:var(--accent);box-shadow:inset 0 0 0 1px #c6d2f7;}
   .nav-menu-panel{position:absolute;top:calc(100% + 8px);left:0;z-index:30;min-width:230px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 30px rgba(16,21,28,.14);padding:7px;display:grid;gap:2px;}
   .nav-menu-panel a{display:block;color:var(--fg);font-size:13px;font-weight:550;line-height:1.3;padding:7px 9px;border-radius:7px;}
-  .nav-menu-panel a:hover{background:#f3f5f9;text-decoration:none;}
-  .nav-menu-panel a.is-active{background:#e8f0ff;color:var(--accent);box-shadow:none;}
+  .nav-menu-panel a:hover{background:#f2f4fc;text-decoration:none;}
+  .nav-menu-panel a.is-active{background:#e8edfc;color:var(--accent);box-shadow:none;}
   .nav-separator{width:1px;height:20px;background:var(--line);margin:0 6px 0 9px;}
   .nav-links a.external-link{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:#fff;color:var(--fg);padding:5px 10px;}
-  .nav-links a.external-link:hover{border-color:#c8cfdb;background:#f7f9fc;color:var(--fg);}
+  .nav-links a.external-link:hover{border-color:#b3c2f2;background:#f7f9fc;color:var(--fg);}
   .nav-icon{width:14px;height:14px;flex:0 0 auto;}
   .external-icon{width:12px;height:12px;flex:0 0 auto;color:var(--muted);}
   @media(max-width:760px){.site-nav .wrap{align-items:flex-start;flex-direction:column;gap:7px}.nav-links{justify-content:flex-start}.nav-links a{padding-left:0;padding-right:10px}.nav-menu summary{padding-left:0}.nav-menu-panel{position:static;min-width:100%;box-shadow:none;margin:4px 0 4px;padding:5px}.nav-separator{display:none}.nav-links a.external-link{padding-left:10px}}
   /* hero */
-  header.hero{background:radial-gradient(1100px 380px at 50% -120px,#eef2ff 0,transparent 70%);border-bottom:1px solid var(--line);padding:64px 0 52px;text-align:center;}
-  .badge{display:inline-block;font-size:12.5px;font-weight:600;color:var(--accent);background:#eef3ff;border:1px solid #dbe6ff;padding:4px 12px;border-radius:999px;margin-bottom:18px;}
-  h1{font-size:42px;line-height:1.1;letter-spacing:-1px;margin:0 0 14px;}
-  h1 .grad{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent;}
-  .tag{font-size:19px;color:var(--muted);max-width:700px;margin:0 auto 26px;}
+  header.hero{background:#fff;border-bottom:1px solid var(--line);padding:64px 0 56px;text-align:center;}
+  .badge{display:inline-block;font-size:12.5px;font-weight:600;color:var(--accent);background:#e8edfc;border:1px solid #cdd8f8;padding:4px 12px;border-radius:999px;margin-bottom:20px;}
+  h1{font-family:var(--display);font-size:46px;line-height:1.08;letter-spacing:-.02em;font-weight:700;color:var(--accent);margin:0 0 4px;}
+  .tag-lead{font-family:var(--display);font-size:40px;line-height:1.12;letter-spacing:-.018em;font-weight:700;color:#3a4150;max-width:760px;margin:0 auto 18px;}
+  .tag{font-size:18px;color:var(--muted);max-width:680px;margin:0 auto 28px;}
   .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
-  .btn{display:inline-block;padding:11px 20px;border-radius:10px;font-weight:600;font-size:15px;}
-  .btn.primary{background:var(--accent);color:#fff;} .btn.primary:hover{background:#1f5ae0;text-decoration:none;}
-  .btn.ghost{background:#fff;border:1px solid var(--line);color:var(--fg);} .btn.ghost:hover{border-color:#c8cfdb;text-decoration:none;}
+  .btn{display:inline-block;padding:11px 22px;border-radius:999px;font-weight:650;font-size:15px;}
+  .btn.primary{background:var(--accent);color:#fff;} .btn.primary:hover{background:#2343b8;text-decoration:none;}
+  .btn.ghost{background:#edeff3;border:0;color:var(--fg);} .btn.ghost:hover{background:#e2e5ec;text-decoration:none;}
   .provenance{margin:22px auto 0;max-width:640px;font-size:13.5px;color:var(--muted);}
+  /* copyable install command, nuget.org style */
+  .install-row{margin-top:18px;display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;}
+  .install-bar{display:inline-flex;align-items:stretch;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 2px 10px rgba(16,21,40,.06);overflow:hidden;}
+  .install-bar code{display:flex;align-items:center;background:none;border-radius:0;padding:9px 14px;font:13.5px/1.4 var(--mono);color:var(--fg);}
+  .copy-btn{display:inline-flex;align-items:center;gap:6px;border:0;border-left:1px solid var(--line);background:#f7f8fd;color:var(--muted);font:600 12.5px/1 var(--sans);padding:0 12px;cursor:pointer;}
+  .copy-btn:hover{background:#e8edfc;color:var(--accent);}
+  .copy-btn.copied,.copy-btn.copied:hover{background:#e7f6ed;color:var(--ok);}
+  .copy-btn svg{width:14px;height:14px;flex:0 0 auto;}
   /* sections */
   section{padding:48px 0;border-bottom:1px solid var(--line);scroll-margin-top:72px;}
   #benchmark-overview{scroll-margin-top:72px;margin:20px 0 34px;}
   h2[id],h3[id]{scroll-margin-top:72px;}
-  h2{font-size:25px;letter-spacing:-.4px;margin:0 0 8px;}
-  h3{font-size:18px;letter-spacing:-.2px;margin:28px 0 6px;}
+  h2{font-family:var(--display);font-size:26px;letter-spacing:-.015em;font-weight:700;margin:0 0 8px;}
+  h3{font-family:var(--display);font-size:18px;letter-spacing:-.01em;font-weight:600;margin:28px 0 6px;}
   .lead{color:var(--muted);max-width:740px;margin:0 0 22px;}
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;}
   .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;}
   .card h3{margin:0 0 6px;font-size:16px;display:flex;align-items:center;gap:8px;}
   .card p{margin:0;color:var(--muted);font-size:14.5px;}
-  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--accent);}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block;flex:0 0 auto;background:var(--accent);}
+  /* Fixed categorical order per card grid (validated: indigo, teal, amber, pink, sky, violet). */
+  .cards .card:nth-child(6n+1) .dot{background:var(--accent);}
+  .cards .card:nth-child(6n+2) .dot{background:var(--teal);}
+  .cards .card:nth-child(6n+3) .dot{background:var(--amber);}
+  .cards .card:nth-child(6n+4) .dot{background:var(--accent3);}
+  .cards .card:nth-child(6n+5) .dot{background:var(--sky);}
+  .cards .card:nth-child(6n+6) .dot{background:var(--accent2);}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start;}
-  @media(max-width:760px){.two{grid-template-columns:1fr;} h1{font-size:34px;}}
+  @media(max-width:760px){.two{grid-template-columns:1fr;} h1{font-size:34px;} .tag-lead{font-size:29px;}}
   ul.feat{list-style:none;padding:0;margin:0;} ul.feat li{padding:7px 0;border-bottom:1px solid var(--line);font-size:15px;}
   ul.feat li b{font-weight:600;}
   .pill{font-size:11px;font-weight:700;border-radius:999px;padding:2px 8px;margin-left:6px;}
@@ -88,17 +115,18 @@
   .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0;}
   .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
   .kpi span{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
-  .kpi strong{display:block;font-size:20px;line-height:1.2;margin:6px 0 2px;}
+  .kpi strong{display:block;font-family:var(--display);font-size:20px;line-height:1.2;margin:6px 0 2px;}
   .kpi small{display:block;color:var(--muted);font-size:13px;line-height:1.35;}
   .controlbar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0 14px;}
   .controlbar label{display:block;color:var(--muted);font-size:12px;font-weight:700;}
-  .controlbar select{width:100%;margin-top:4px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--fg);font:14px/1.4 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:8px 10px;}
+  .controlbar select{width:100%;margin-top:4px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--fg);font:14px/1.4 var(--sans);padding:8px 10px;}
   .table-wrap{overflow-x:visible;border:1px solid var(--line);border-radius:12px;background:#fff;margin-top:10px;}
   .table-wrap table{margin:0;width:100%;min-width:0;table-layout:fixed;}
   .table-wrap .pill{margin-left:0;}
   .perf-table-wrap{overflow:visible;}
   .perf-table-wrap table{width:100%;min-width:0;table-layout:fixed;}
   .perf-table th,.perf-table td{padding:clamp(6px,1vw,10px);font-size:clamp(12px,1.2vw,14px);line-height:1.35;overflow-wrap:anywhere;}
+  .perf-table th{font-size:12.5px;overflow-wrap:normal;}
   .perf-table .perf-col-scenario{width:21%;}
   .perf-table .perf-col-model{width:12%;}
   .perf-table .perf-col-thinking{width:8%;}
@@ -112,7 +140,7 @@
   .scenario-cell{display:grid;gap:5px;}
   .scenario-head{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .scenario-title{font-weight:800;color:var(--fg);}
-  .scenario-chip{border-radius:999px;background:#eef1f5;color:#475467;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:2px 6px;}
+  .scenario-chip{border-radius:999px;background:#eef0f8;color:#475467;font-size:10.5px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:2px 6px;}
   .scenario-id{font:12px/1.3 ui-monospace,Consolas,monospace;color:var(--muted);}
   .cli-cell{display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;align-items:start;}
   .cli-icon{display:inline-grid;place-items:center;width:26px;height:26px;border:1px solid var(--line);border-radius:8px;background:#f7f9fc;color:var(--fg);font-size:11px;font-weight:850;line-height:1;}
@@ -124,21 +152,21 @@
   .source-tests{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;line-height:1.35;}
   .source-tests-label{color:var(--muted);margin-right:2px;}
   .source-tests a.github-source-link{display:inline-flex;align-items:center;gap:4px;color:var(--fg);font-weight:650;border:1px solid var(--line);border-radius:999px;background:#fff;padding:2px 6px;text-decoration:none;}
-  .source-tests a.github-source-link:hover{border-color:#c8cfdb;background:#f7f9fc;}
+  .source-tests a.github-source-link:hover{border-color:#b3c2f2;background:#f7f9fc;}
   .source-external-icon{width:11px;height:11px;color:var(--muted);flex:0 0 auto;}
-  .perf-status{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:750;background:#eef1f5;color:var(--muted);}
+  .perf-status{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:750;background:#eef0f8;color:var(--muted);}
   .perf-status.sample{background:#edf5ff;color:#1d4ed8;}
   .perf-status.measured{background:#e7f6ed;color:var(--ok);}
   .first-output-cell{min-width:0;}
   .frame-cell-head{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;}
   .first-output-value{font-size:16px;font-weight:800;color:var(--fg);}
   .frame-detail-button{border:1px solid var(--line);background:#fff;color:var(--fg);border-radius:7px;padding:3px 6px;font-size:11px;font-weight:800;line-height:1.2;cursor:pointer;}
-  .frame-detail-button:hover{border-color:#c8cfdb;background:#f7f9fc;}
-  .time-bar{height:9px;background:#eef1f5;border-radius:999px;margin:6px 0 5px;overflow:hidden;}
-  .time-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#14b8a6,#2f6df6);}
+  .frame-detail-button:hover{border-color:#b3c2f2;background:#f7f9fc;}
+  .time-bar{height:9px;background:#eef0f8;border-radius:999px;margin:6px 0 5px;overflow:hidden;}
+  .time-bar span{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--teal),var(--accent));}
   .time-bar.slow span{background:linear-gradient(90deg,#f59e0b,#b54708);}
-  .inline-help-button{border:1px solid var(--line);background:#fff;color:var(--fg);border-radius:8px;padding:5px 9px;font:13px/1.2 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-weight:700;cursor:pointer;}
-  .inline-help-button:hover{border-color:#c8cfdb;background:#f7f9fc;}
+  .inline-help-button{border:1px solid var(--line);background:#fff;color:var(--fg);border-radius:8px;padding:5px 9px;font:13px/1.2 var(--sans);font-weight:700;cursor:pointer;}
+  .inline-help-button:hover{border-color:#b3c2f2;background:#f7f9fc;}
   .frame-modal{width:min(880px,calc(100vw - 28px));border:1px solid var(--line);border-radius:12px;padding:0;background:#fff;color:var(--fg);box-shadow:0 24px 70px rgba(16,21,28,.24);}
   .frame-modal::backdrop{background:rgba(16,21,28,.42);}
   .frame-modal-inner{padding:20px;}
@@ -148,8 +176,8 @@
   .frame-modal .table-wrap{max-height:390px;overflow:auto;margin-top:12px;}
   .frame-modal table{min-width:720px;}
   .frame-size{font-variant-numeric:tabular-nums;}
-  .frame-modal-close{flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--fg);font:13px/1.2 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-weight:700;padding:6px 10px;cursor:pointer;}
-  .frame-modal-close:hover{border-color:#c8cfdb;background:#f7f9fc;}
+  .frame-modal-close{flex:0 0 auto;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--fg);font:13px/1.2 var(--sans);font-weight:700;padding:6px 10px;cursor:pointer;}
+  .frame-modal-close:hover{border-color:#b3c2f2;background:#f7f9fc;}
   .frame-visible{font-weight:750;color:var(--ok);}
   .frame-hidden{font-weight:750;color:var(--muted);}
   .schema-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;}
@@ -165,23 +193,35 @@
     .perf-table-wrap table{border-collapse:separate;border-spacing:0;}
     .perf-table-wrap thead{display:none;}
     .perf-table-wrap tr{background:#fff;border:1px solid var(--line);border-radius:10px;margin:10px 0;padding:8px 10px;}
-    .perf-table-wrap td{border:0;border-bottom:1px solid #eef1f5;display:grid;grid-template-columns:minmax(96px,34%) minmax(0,1fr);gap:10px;padding:7px 0;font-size:14px;}
+    .perf-table-wrap td{border:0;border-bottom:1px solid #eef0f8;display:grid;grid-template-columns:minmax(96px,34%) minmax(0,1fr);gap:10px;padding:7px 0;font-size:14px;}
     .perf-table-wrap td:last-child{border-bottom:0;}
     .perf-table-wrap td:before{content:attr(data-label);color:var(--muted);font-size:12px;font-weight:750;text-transform:uppercase;letter-spacing:.03em;}
     .perf-table-wrap td[colspan]:before{display:none;}
     .perf-table-wrap td[colspan]{display:block;border:1px solid var(--line);border-radius:10px;background:#fff;padding:10px;}
   }
   @media(max-width:560px){.controlbar{grid-template-columns:1fr;}}
+  /* architecture diagram */
+  .arch{margin:38px 0 0;}
+  .arch-scroll{overflow-x:auto;}
+  .arch svg{display:block;min-width:840px;width:100%;height:auto;}
+  .arch figcaption{margin:10px auto 0;max-width:720px;text-align:center;color:var(--muted);font-size:13.5px;}
+  .arch .t-title{font:600 16.5px var(--display);fill:var(--fg);}
+  .arch .t-brand{font:700 16.5px var(--display);fill:var(--accent);}
+  .arch .t-sub{font:400 12px var(--sans);fill:var(--muted);}
+  .arch .t-chip{font:500 12px var(--sans);fill:var(--fg);}
+  .arch .t-cli{font:600 13.5px var(--sans);fill:var(--fg);}
+  .arch .t-flow{font:600 11.5px var(--sans);fill:var(--muted);}
+  .arch .t-icon{font:800 11px var(--sans);}
   /* docs nav + tables */
   .docnav{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 26px;}
-  .docnav a{font-size:13px;background:#eef1f5;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--fg);}
-  .docnav a:hover{border-color:#c8cfdb;text-decoration:none;}
+  .docnav a{font-size:13px;background:#eef0f8;border:1px solid var(--line);border-radius:999px;padding:4px 12px;color:var(--fg);}
+  .docnav a:hover{border-color:#b3c2f2;text-decoration:none;}
   .docsec{padding-top:14px;}
   .docsec h3{scroll-margin-top:72px;}
   table{border-collapse:collapse;width:100%;table-layout:fixed;margin:14px 0;font-size:14px;}
   th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top;overflow-wrap:anywhere;}
-  th{background:#f3f5f9;font-weight:600;}
-  td code,th code{background:#eef1f5;white-space:normal;overflow-wrap:anywhere;}
+  th{background:#f2f4fc;font-weight:600;}
+  td code,th code{background:#edeffb;white-space:normal;overflow-wrap:anywhere;}
   footer{padding:34px 0 60px;color:var(--muted);font-size:14px;text-align:center;}
   footer a{color:var(--muted);text-decoration:underline;}
 </style>
@@ -263,15 +303,24 @@
 <header id="top" class="hero">
   <div class="wrap">
     <span class="badge">.NET library · Apache-2.0 · Windows + Linux · stable core, pre-1.0</span>
-    <h1>Coding<span class="grad">AgentRunner</span></h1>
-    <p class="tag">Give your .NET app an LLM on your local machine — through the coding-agent CLI you already sign in to, with <b>no API keys</b>. Run a single prompt, or drive a full multi-turn session.</p>
+    <h1>CodingAgentRunner</h1>
+    <p class="tag-lead">Give your .NET app an LLM on your local machine</p>
+    <p class="tag">Through the coding-agent CLI you already sign in to, with <b>no API keys</b> — run a single prompt, or drive a full multi-turn session.</p>
     <div class="btns">
       <a class="btn primary" href="https://www.nuget.org/packages/CodingAgentRunner">Get it on NuGet</a>
       <a class="btn ghost" href="https://github.com/agent-orc/runner">View on GitHub</a>
       <a class="btn ghost" href="#docs">Read the docs ↓</a>
     </div>
-    <p style="margin-top:16px;"><code>dotnet add package CodingAgentRunner</code>
-      <a href="https://www.nuget.org/packages/CodingAgentRunner" style="margin-left:10px;vertical-align:middle;"><img src="https://img.shields.io/nuget/v/CodingAgentRunner.svg?label=NuGet" alt="NuGet version" style="vertical-align:middle;"></a></p>
+    <div class="install-row">
+      <div class="install-bar">
+        <code>dotnet add package CodingAgentRunner</code>
+        <button type="button" class="copy-btn" data-copy="dotnet add package CodingAgentRunner" aria-label="Copy install command to clipboard">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 5.5V4a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5"/></svg>
+          <span class="copy-label">Copy</span>
+        </button>
+      </div>
+      <a href="https://www.nuget.org/packages/CodingAgentRunner"><img src="https://img.shields.io/nuget/v/CodingAgentRunner.svg?label=NuGet" alt="NuGet version" style="vertical-align:middle;"></a>
+    </div>
     <p class="provenance">Extracted from <b>Agent Studio</b>, a production multi-agent orchestrator that has processed hundreds of millions of tokens through these CLIs.</p>
   </div>
 </header>
@@ -295,6 +344,65 @@
 });
 <span class="k">if</span> (error <span class="k">is not null</span>) Console.Error.WriteLine(error);</pre>
     </div>
+  </div>
+  <div class="wrap">
+    <figure class="arch">
+      <div class="arch-scroll">
+        <svg viewBox="0 0 960 260" role="img" aria-labelledby="arch-title arch-desc" xmlns="http://www.w3.org/2000/svg">
+          <title id="arch-title">How CodingAgentRunner works</title>
+          <desc id="arch-desc">Your .NET app calls StartAsync on CodingAgentRunner, which spawns the signed-in coding-agent CLI as a child process. The CLI streams NDJSON frames back, and the runner adapts them into one typed CliRunEvent stream.</desc>
+          <defs>
+            <marker id="ar-req" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#2c50d0"/></marker>
+            <marker id="ar-ev" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#0d9488"/></marker>
+          </defs>
+
+          <!-- your app -->
+          <rect x="10" y="78" width="180" height="104" rx="14" fill="#fff" stroke="#e4e8f0"/>
+          <text class="t-title" x="100" y="124" text-anchor="middle">Your .NET app</text>
+          <text class="t-sub" x="100" y="146" text-anchor="middle">service · worker · desktop</text>
+
+          <!-- runner -->
+          <rect x="360" y="30" width="240" height="200" rx="16" fill="#f3f6fe" stroke="#c6d2f7"/>
+          <text class="t-brand" x="480" y="60" text-anchor="middle">CodingAgentRunner</text>
+          <rect x="380" y="76" width="200" height="28" rx="8" fill="#fff" stroke="#e4e8f0"/>
+          <text class="t-chip" x="480" y="94" text-anchor="middle">descriptor catalog</text>
+          <rect x="380" y="112" width="200" height="28" rx="8" fill="#fff" stroke="#e4e8f0"/>
+          <text class="t-chip" x="480" y="130" text-anchor="middle">spawn engine · env hardening</text>
+          <rect x="380" y="148" width="200" height="28" rx="8" fill="#fff" stroke="#e4e8f0"/>
+          <text class="t-chip" x="480" y="166" text-anchor="middle">adapter → typed events</text>
+          <rect x="380" y="184" width="200" height="28" rx="8" fill="#fff" stroke="#e4e8f0"/>
+          <text class="t-chip" x="480" y="202" text-anchor="middle">watchdog · quota · metrics</text>
+
+          <!-- CLIs -->
+          <rect x="730" y="36" width="214" height="46" rx="12" fill="#fff7ed" stroke="#fed7aa"/>
+          <rect x="742" y="46" width="26" height="26" rx="8" fill="#fff" stroke="#fed7aa"/>
+          <text class="t-icon" x="755" y="63" text-anchor="middle" fill="#9a3412">Cl</text>
+          <text class="t-cli" x="778" y="64">Claude Code</text>
+          <rect x="730" y="96" width="214" height="46" rx="12" fill="#eef3ff" stroke="#c9dcff"/>
+          <rect x="742" y="106" width="26" height="26" rx="8" fill="#fff" stroke="#c9dcff"/>
+          <text class="t-icon" x="755" y="123" text-anchor="middle" fill="#1d4ed8">Cx</text>
+          <text class="t-cli" x="778" y="124">OpenAI Codex</text>
+          <rect x="730" y="156" width="214" height="46" rx="12" fill="#f5f3ff" stroke="#ddd6fe"/>
+          <rect x="742" y="166" width="26" height="26" rx="8" fill="#fff" stroke="#ddd6fe"/>
+          <text class="t-icon" x="755" y="183" text-anchor="middle" fill="#6d28d9">Ag</text>
+          <text class="t-cli" x="778" y="184">Google Antigravity</text>
+          <text class="t-sub" x="837" y="232" text-anchor="middle">your signed-in CLIs — no API keys</text>
+
+          <!-- request path (indigo) -->
+          <path d="M190 110 H356" stroke="#2c50d0" stroke-width="2" fill="none" marker-end="url(#ar-req)"/>
+          <text class="t-flow" x="275" y="100" text-anchor="middle">StartAsync(prompt)</text>
+          <path d="M600 88 H726" stroke="#2c50d0" stroke-width="2" fill="none" marker-end="url(#ar-req)"/>
+          <text class="t-flow" x="663" y="78" text-anchor="middle">child process · stdin</text>
+
+          <!-- event path (teal) -->
+          <path d="M730 132 H604" stroke="#0d9488" stroke-width="2" fill="none" marker-end="url(#ar-ev)"/>
+          <text class="t-flow" x="667" y="152" text-anchor="middle">NDJSON frames</text>
+          <path d="M360 150 H194" stroke="#0d9488" stroke-width="2" fill="none" marker-end="url(#ar-ev)"/>
+          <text class="t-flow" x="277" y="170" text-anchor="middle">typed CliRunEvent stream</text>
+        </svg>
+      </div>
+      <figcaption>How a run flows: your app calls <code>StartAsync</code>, the runner spawns the signed-in CLI as a child process, and the CLI's NDJSON output comes back as one typed <code>CliRunEvent</code> stream — the same vocabulary for every CLI.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -1834,6 +1942,50 @@ dotnet run -c Release --project benchmarks/CodingAgentRunner.Benchmarks -- --fil
   });
 
   requestUpdate();
+})();
+</script>
+<script>
+(function () {
+  function fallbackCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); } catch (e) { /* best effort */ }
+    document.body.removeChild(ta);
+  }
+
+  document.querySelectorAll("[data-copy]").forEach(function (btn) {
+    var label = btn.querySelector(".copy-label");
+    var original = label ? label.textContent : "";
+    var timer = null;
+
+    function showCopied() {
+      btn.classList.add("copied");
+      if (label) label.textContent = "Copied";
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        btn.classList.remove("copied");
+        if (label) label.textContent = original;
+      }, 1600);
+    }
+
+    btn.addEventListener("click", function () {
+      var text = btn.getAttribute("data-copy") || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showCopied, function () {
+          fallbackCopy(text);
+          showCopied();
+        });
+      } else {
+        fallbackCopy(text);
+        showCopied();
+      }
+    });
+  });
 })();
 </script>
 </body>
