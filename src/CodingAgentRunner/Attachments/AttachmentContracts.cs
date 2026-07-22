@@ -19,8 +19,8 @@ public sealed record AttachmentReference(string Reference)
 
 /// <summary>
 /// The local file produced by an <see cref="IAttachmentResolver"/>. The file must
-/// already exist and <see cref="AbsolutePath"/> must be rooted. The resolver owns
-/// its storage lifetime; it must keep the file readable for the duration of the run.
+/// already exist and <see cref="AbsolutePath"/> must be fully qualified. The resolver
+/// owns its storage lifetime; it must keep the file readable for the duration of the run.
 /// </summary>
 /// <param name="AbsolutePath">Absolute path to the durable attachment file.</param>
 public sealed record ResolvedAttachment(string AbsolutePath)

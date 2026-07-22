@@ -51,7 +51,7 @@ storage-specific message for other resolution failures.
 Resolution happens before the CLI process starts. For each attachment, the runner:
 
 1. calls the configured resolver;
-2. requires a rooted path and verifies that the file exists;
+2. requires a fully qualified absolute path and verifies that the file exists;
 3. adds the absolute path, file name, and media type to a delimited
    `<chat-attachments>` block after the prompt;
 4. passes image files to Codex with `--image`, including resumed runs.

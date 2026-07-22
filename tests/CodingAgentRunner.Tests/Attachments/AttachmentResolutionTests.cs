@@ -153,6 +153,35 @@ public class AttachmentResolutionTests
     }
 
     [Fact]
+    public async Task StartAsync_WindowsDriveRelativeResolvedPathIsRejectedAsNonAbsolute()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var drive = Path.GetPathRoot(Path.GetTempPath())![..2];
+        var path = $"{drive}attachment.png";
+        Assert.True(Path.IsPathRooted(path));
+        Assert.False(Path.IsPathFullyQualified(path));
+
+        var resolver = new DelegateResolver(_ => new ResolvedAttachment(path));
+        var engine = new CliRunEngine(
+            Descriptor(),
+            new CliOptions { AllowAgentGitMutation = true, AttachmentResolver = resolver });
+
+        var (run, error) = await engine.StartAsync(new CliRunRequest
+        {
+            RunId = "attachment-drive-relative",
+            Prompt = "Inspect this image.",
+            WorkingDirectory = Path.GetTempPath(),
+            Attachments = [new AttachmentReference("attachment:drive-relative")],
+        });
+
+        Assert.Null(run);
+        Assert.Contains("resolver returned a relative path", error);
+        Assert.Contains("must return an absolute path", error);
+    }
+
+    [Fact]
     public void CodexLaunch_PassesResolvedImagesThroughNativeImageInput()
     {
         var imagePath = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "screen.png"));

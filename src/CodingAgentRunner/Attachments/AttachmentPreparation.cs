@@ -63,7 +63,11 @@ internal static class AttachmentPreparation
                 return Failed(request, attachment, "the resolver returned no file; verify that the reference still exists in durable attachment storage", timer, logger);
             if (string.IsNullOrWhiteSpace(resolved.AbsolutePath))
                 return Failed(request, attachment, "the resolver returned an empty path", timer, logger);
-            if (!Path.IsPathRooted(resolved.AbsolutePath))
+            // Path.IsPathRooted accepts drive-relative Windows paths such as
+            // "C:file.png". Those still depend on the runner's per-drive current
+            // directory, so they do not satisfy the resolver's absolute-path
+            // contract.
+            if (!Path.IsPathFullyQualified(resolved.AbsolutePath))
                 return Failed(request, attachment, $"the resolver returned a relative path ('{resolved.AbsolutePath}'); it must return an absolute path", timer, logger);
 
             string fullPath;
